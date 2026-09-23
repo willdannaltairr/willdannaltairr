@@ -18,7 +18,7 @@ from scipy.spatial.distance import cdist
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "assets/source/mrr.png"
+SOURCE = ROOT / "assets/source/siasoy.jpeg"
 ASSETS = ROOT / "assets"
 LOGOS = Path(__file__).resolve().parent / "logos"
 DATA = Path(__file__).resolve().parent / "data"
@@ -30,21 +30,21 @@ TRAVELLER_COUNT = 900
 SEED = 314159
 
 ROWS = [
-    ("Subject", "Emmi"),
-    ("Role", "Blockchain Engineer · Tech Lead"),
-    ("Origin", "Bolivia"),
-    ("Education", "Community · LATAM"),
-    ("Status", "Building + Learning + Shipping"),
-    ("ToolChain", "Sublime · Cursor · Git"),
-    ("Core.Lang", "TypeScript · Rust · Solidity"),
-    ("Core.Frontend", "React · Next.js · Three.js · Tailwind"),
-    ("Core.Backend", "Node · Python"),
-    ("Core.Database", "Postgres · Supabase"),
-    ("Core.Infra", "Vercel · Docker · AWS"),
+    ("Nama", "Wildan Daffi Altair Darmawan"),
+    ("Umur", "16 Tahun"),
+    ("Status", "Pelajar"),
+    ("Sekolah", "SMA · Belajar Mandiri"),
+    ("Fokus", "Coding · AI · Web"),
+    ("ToolChain", "VS Code · Git · GitHub"),
+    ("Core.Lang", "Python · JavaScript · HTML/CSS"),
+    ("Core.Frontend", "HTML · CSS · JavaScript"),
+    ("Core.Backend", "Python · Node.js Dasar"),
+    ("Core.Database", "JSON · SQL Dasar"),
+    ("Core.Infra", "GitHub · Vercel"),
     ("Grid.Mail", "—"),
-    ("Grid.LinkedIn", "/in/emmi-aguilar-rivero"),
-    ("Grid.GitHub", "emmi-lili"),
-    ("Grid.X", "@emmcriptada"),
+    ("Grid.GitHub", "willdannaltairr"),
+    ("Grid.X", "—"),
+    ("Target", "Programmer Muda"),
 ]
 
 THEMES = {
@@ -158,8 +158,8 @@ def floyd_steinberg(gray: np.ndarray) -> np.ndarray:
 def portrait_points(theme: str, rng: np.random.Generator) -> np.ndarray:
     """Return sampled x/y banner coordinates from a 300x340 dither grid."""
     source = Image.open(SOURCE).convert("RGBA")
-    # Tighter head + shoulders crop so face detail fills the VISUAL.MAP frame.
-    crop = source.crop((18, 28, 390, 450)).resize((300, 340), Image.Resampling.LANCZOS)
+    # Head + shoulders crop so face detail fills the VISUAL.MAP frame.
+    crop = source.crop((450, 280, 850, 733)).resize((300, 340), Image.Resampling.LANCZOS)
     rgb = crop.convert("RGB")
     alpha = np.asarray(crop.getchannel("A"), dtype=np.float32) / 255.0
 
@@ -282,7 +282,7 @@ def render_svg(
         '<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" '
         'aria-labelledby="title desc">',
-        "<title id=\"title\">Emmi's live system profile</title>",
+        "<title id=\"title\">Wildan Daffi Altair Darmawan's live system profile</title>",
         '<desc id="desc">Animated terminal profile with a dithered portrait and '
         "Rust, code, and Stellar silhouettes.</desc>",
         "<defs>",
@@ -401,7 +401,7 @@ def render_svg(
             f'stroke="{t["chrome"]}"/>',
             f'<text x="1055" y="111" text-anchor="middle" fill="{t["chrome"]}" '
             'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="14" '
-            'font-weight="700">@emmi-lili</text>',
+            'font-weight="700">@willdannaltairr</text>',
         ]
     )
 
@@ -435,7 +435,7 @@ def render_svg(
             "● ALL SYSTEMS NOMINAL</text>",
             f'<text x="1128" y="548" text-anchor="end" fill="{t["muted"]}" '
             'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11">'
-            "UTC-4 · LATAM NODE</text>",
+             "WIB · ID NODE</text>",
             "</svg>",
         ]
     )

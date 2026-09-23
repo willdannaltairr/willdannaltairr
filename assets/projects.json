@@ -2,20 +2,20 @@
   "_comment": "Featured repos, in README order. Stars/forks/language come live from the API on every run; the description here overrides the repo's GitHub description.",
   "projects": [
     {
-      "repo": "Authorization-Checks-",
-      "description": "Checks de autorizacion que preservan privacidad (OFAC / PEP / blacklist) para pipelines KYC. La data sensible se queda local y un ZK proof ancla el resultado on-chain via Midnight."
+      "repo": "Blog-App",
+      "description": "Aplikasi blog (Flutter) — frontend utama untuk baca dan tulis postingan."
     },
     {
-      "repo": "wallet-risk-lens",
-      "description": "Herramienta Web3 ligera que puntua el riesgo de una wallet on-chain con heuristicas simples y legibles."
+      "repo": "Blog-App-Backend",
+      "description": "Backend TypeScript untuk Blog-App — API dan data postingan."
     },
     {
-      "repo": "tx-whisperer",
-      "description": "Pega cualquier hash de transaccion y detecta al instante a que blockchain pertenece. Sin llamadas RPC."
+      "repo": "CRUD-DATA-SISWA",
+      "description": "CRUD data siswa (TypeScript) dengan deploy Vercel — latihan full-stack."
     },
     {
-      "repo": "DeepGrid",
-      "description": "Vault de market-making automatico en Sui que profundiza order books y genera yield real de trading."
+      "repo": "E-commerce-Altaire-Noire",
+      "description": "Toko online Altaire Noire (HTML) — katalog dan checkout sederhana."
     }
   ]
 }
