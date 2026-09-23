@@ -43,9 +43,14 @@ Fokusku **Coding · AI · Web**, dan lagi serius menata jalan menuju
 
 <div align="center">
 
-## my perfect stack`
+## my perfect stack
 
 <img src="https://skillicons.dev/icons?i=py,js,ts,html,css,react,nextjs,nodejs,tailwind,dart,flutter,git,github,vscode&perline=7" alt="tech stack">
+
+<br>
+
+<!-- DevQuest monster-stack card: live tech-stack card, glass style -->
+<img src="https://devquest-mu.vercel.app/card/willdannaltairr.svg?template=monster-stack&style=glass&accent=ffffff" alt="@willdannaltairr's DevQuest Monster Stack" width="100%">
 
 </div>
 
