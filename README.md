@@ -58,7 +58,6 @@ Fokusku **Coding · AI · Web**, dan lagi serius menata jalan menuju
 <table>
 <tr>
 <td width="50%" align="center" valign="middle">
-![@octocat's DevQuest Monster Stack](https://devquest-mu.vercel.app/card/octocat.svg?template=monster-stack&style=glass)
 <!-- Self-rated radar - edit assets/skills.json, the workflow redraws it -->
 <picture>
   <source media="(prefers-color-scheme: dark)"  srcset="assets/radar-dark.svg">
