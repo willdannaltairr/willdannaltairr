@@ -18,7 +18,7 @@ from scipy.spatial.distance import cdist
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "assets/source/siasoy.jpeg"
+SOURCE = ROOT / "assets/source/siganteng.jpeg"
 ASSETS = ROOT / "assets"
 LOGOS = Path(__file__).resolve().parent / "logos"
 DATA = Path(__file__).resolve().parent / "data"
@@ -158,8 +158,16 @@ def floyd_steinberg(gray: np.ndarray) -> np.ndarray:
 def portrait_points(theme: str, rng: np.random.Generator) -> np.ndarray:
     """Return sampled x/y banner coordinates from a 300x340 dither grid."""
     source = Image.open(SOURCE).convert("RGBA")
-    # Head + shoulders crop so face detail fills the VISUAL.MAP frame.
-    crop = source.crop((450, 280, 850, 733)).resize((300, 340), Image.Resampling.LANCZOS)
+    # Full photo, never cropped: scale the whole image to fit inside the
+    # 300x340 VISUAL.MAP frame (aspect preserved) and centre it. The side
+    # bars stay transparent, so the dither only ever draws the photo itself.
+    frame_w, frame_h = 300, 340
+    fitted = source.copy()
+    fitted.thumbnail((frame_w, frame_h), Image.Resampling.LANCZOS)
+    crop = Image.new("RGBA", (frame_w, frame_h), (0, 0, 0, 0))
+    crop.alpha_composite(
+        fitted, ((frame_w - fitted.width) // 2, (frame_h - fitted.height) // 2)
+    )
     rgb = crop.convert("RGB")
     alpha = np.asarray(crop.getchannel("A"), dtype=np.float32) / 255.0
 

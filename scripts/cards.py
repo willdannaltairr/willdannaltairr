@@ -33,8 +33,8 @@ UA = {"User-Agent": "cards.py"}
 
 THEMES = {
     "dark": {
-        "bg": "#0d1117", "border": "#30363d", "title": "#aa9bef",
-        "text": "#c9d1d9", "muted": "#8b949e", "value": "#e6edf3",
+        "bg": "#000000", "border": "#30363d", "title": "#aa9bef",
+        "text": "#ffffff", "muted": "#ffffff", "value": "#ffffff",
         "accent": "#aa9bef",
     },
     "light": {
