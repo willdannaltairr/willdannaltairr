@@ -37,18 +37,6 @@
 
 <br>
 
-<!-- DevQuest monster-stack card: live tech-stack card, glass style -->
-<img src="https://devquest-mu.vercel.app/card/willdannaltairr.svg?template=monster-stack&style=glass&accent=ffffff" alt="@willdannaltairr's DevQuest Monster Stack" width="100%">
-
-</div>
-
----
-
-<div align="center">
-
-<table>
-<tr>
-<td width="50%" align="center" valign="middle">
 <!-- Self-rated radar - edit assets/skills.json, the workflow redraws it -->
 <picture>
   <source media="(prefers-color-scheme: dark)"  srcset="assets/radar-dark.svg">
