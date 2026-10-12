@@ -31,44 +31,6 @@
 
 <div align="center">
 
-## my perfect stack
-
-<img src="https://skillicons.dev/icons?i=py,js,ts,html,css,react,nextjs,nodejs,tailwind,dart,flutter,git,github,vscode&perline=7" alt="tech stack">
-
-<br>
-
-<!-- Self-rated radar - edit assets/skills.json, the workflow redraws it -->
-<picture>
-  <source media="(prefers-color-scheme: dark)"  srcset="assets/radar-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="assets/radar-light.svg">
-  <img src="assets/radar-dark.svg" width="400" alt="skill radar chart">
-</picture>
-
-</td>
-<td width="50%" align="center" valign="middle">
-
-<!-- Hand-authored contract & language stack radar - edit assets/langmix.json -->
-<picture>
-  <source media="(prefers-color-scheme: dark)"  srcset="assets/radar-langs-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="assets/radar-langs-light.svg">
-  <img src="assets/radar-langs-dark.svg" width="400" alt="language radar chart">
-</picture>
-
-</td>
-</tr>
-</table>
-
-</div>
-
-<div align="center">
-
-<br>
-
-<img src="assets/metrics.languages.svg" height="165" alt="most used languages">
-
-</div>
-
-<div align="center">
 
 <!-- pacman -->
 <picture>
