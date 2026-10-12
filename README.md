@@ -26,7 +26,27 @@
 
 ---
 
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="assets/radar-langs-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/radar-langs-light.svg">
+  <img src="assets/radar-langs-dark.svg" width="400" alt="language radar chart">
+</picture>
 
+</td>
+</tr>
+</table>
+
+</div>
+
+<div align="center">
+
+<br>
+
+<img src="assets/metrics.languages.svg" height="165" alt="most used languages">
+
+</div>
+
+<div align="center">
 
 
 <div align="center">
