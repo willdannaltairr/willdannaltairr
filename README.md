@@ -20,8 +20,6 @@
 <a href="https://instagram.com/willdannaltairr"><img src="https://img.shields.io/badge/Instagram-0d1117?style=for-the-badge&logo=instagram&logoColor=aa9bef" alt="Instagram"></a>&nbsp;&nbsp;
 <br>
 
-<img src="https://komarev.com/ghpvc/?username=willdannaltairr&style=flat&color=aa9bef&label=profile+views" alt="profile views">
-
 </div>
 
 ---
