@@ -708,6 +708,65 @@ def render_svg(
         '<feTurbulence type="fractalNoise" baseFrequency=".045 .09" numOctaves="4" seed="11" result="n"/>'
         '<feDisplacementMap in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G"/>'
         '</filter>',
+        # --- tekstur kertas koran -----------------------------------------
+        # Tiga lapis, masing-masing meniru satu hal berbeda dari kertas cetak
+        # tua: butiran halus (grain), serat panjang (fiber), dan bercak
+        # penuaan (mottle). Semuanya feTurbulence, jadi tidak menambah byte
+        # gambar dan tetap ikut di dalam <img> GitHub tanpa JavaScript.
+        '<filter id="grain" x="0" y="0" width="100%" height="100%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3" '
+        'seed="4" result="n"/>'
+        '<feColorMatrix in="n" type="saturate" values="0"/>'
+        '<feComponentTransfer><feFuncA type="linear" slope=".55"/></feComponentTransfer>'
+        '</filter>',
+        '<filter id="fiber" x="0" y="0" width="100%" height="100%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".004 .62" numOctaves="4" '
+        'seed="23" result="n"/>'
+        '<feColorMatrix in="n" type="saturate" values="0"/>'
+        '<feComponentTransfer><feFuncA type="linear" slope=".5"/></feComponentTransfer>'
+        '</filter>',
+        '<filter id="mottle" x="0" y="0" width="100%" height="100%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".012" numOctaves="5" '
+        'seed="7" result="n"/>'
+        '<feColorMatrix in="n" type="matrix" '
+        'values="0 0 0 0 .38  0 0 0 0 .27  0 0 0 0 .15  0 0 0 .5 0"/>'
+        '</filter>',
+        # Serat kertas koran (pulp) lebih kasar dari grain: frekuensi rendah,
+        # kontras tinggi, arah acak — inilah yang membuat kertas cetak murah
+        # terlihat "berbintil" saat dilihat dekat.
+        '<filter id="pulp" x="0" y="0" width="100%" height="100%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".05" numOctaves="4" '
+        'seed="61" result="n"/>'
+        '<feColorMatrix in="n" type="saturate" values="0"/>'
+        '<feComponentTransfer><feFuncA type="table" '
+        'tableValues="0 1 0 1 0 1 0 1 0 1"/></feComponentTransfer>'
+        '</filter>',
+        f'<clipPath id="paperClip"><rect x="13" y="13" width="1154" '
+        f'height="{H - 26}" rx="13"/></clipPath>',
+        # Lipatan: kertas dilipat dua kali sebelum dimasukkan amplop, jadi ada
+        # satu lipatan vertikal di tengah dan satu horizontal di bawah tengah.
+        '<linearGradient id="creaseV" x1="0" y1="0" x2="1" y2="0">'
+        '<stop offset="0" stop-color="#000" stop-opacity="0"/>'
+        '<stop offset=".30" stop-color="#000" stop-opacity=".05"/>'
+        '<stop offset=".44" stop-color="#000" stop-opacity=".09"/>'
+        '<stop offset=".50" stop-color="#fff" stop-opacity=".13"/>'
+        '<stop offset=".56" stop-color="#000" stop-opacity=".09"/>'
+        '<stop offset=".70" stop-color="#000" stop-opacity=".05"/>'
+        '<stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>',
+        '<linearGradient id="creaseH" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#000" stop-opacity="0"/>'
+        '<stop offset=".30" stop-color="#000" stop-opacity=".05"/>'
+        '<stop offset=".44" stop-color="#000" stop-opacity=".08"/>'
+        '<stop offset=".50" stop-color="#fff" stop-opacity=".11"/>'
+        '<stop offset=".56" stop-color="#000" stop-opacity=".08"/>'
+        '<stop offset=".70" stop-color="#000" stop-opacity=".05"/>'
+        '<stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>',
+        # Tepi menggelap: kertas lama selalu lebih gelap di pinggir.
+        '<radialGradient id="age" cx=".5" cy=".46" r=".78">'
+        '<stop offset=".52" stop-color="#4a3a26" stop-opacity="0"/>'
+        '<stop offset=".82" stop-color="#4a3a26" stop-opacity=".12"/>'
+        '<stop offset="1" stop-color="#4a3a26" stop-opacity=".28"/>'
+        '</radialGradient>',
         f'<clipPath id="visualClip"><rect x="49" y="{num(124 + MASTHEAD_SHIFT)}" width="390" height="414" rx="3"/></clipPath>',
         "</defs>",
         f"<style>{bio_css}</style>",
@@ -715,6 +774,19 @@ def render_svg(
         f'<rect width="{W}" height="{H}" rx="18" fill="{t["bg"]}"/>',
         f'<rect x="13" y="13" width="1154" height="{H - 26}" rx="13" fill="{t["panel"]}" '
         f'stroke="{t["line"]}" stroke-width="3" filter="url(#shadow)"/>',
+        # Tekstur kertas dasar (di bawah tinta). Lapisan akhir di ujung SVG
+        # menambahkan grain + lipatan di atas semua elemen, seperti kertas
+        # yang benar-benar dicetak.
+        '<g clip-path="url(#paperClip)">'
+        '<rect x="13" y="13" width="1154" height="'
+        f'{H - 26}" filter="url(#grain)" opacity=".30"/>'
+        '<rect x="13" y="13" width="1154" height="'
+        f'{H - 26}" filter="url(#fiber)" opacity=".20"/>'
+        '<rect x="13" y="13" width="1154" height="'
+        f'{H - 26}" filter="url(#pulp)" opacity=".07"/>'
+        '<rect x="13" y="13" width="1154" height="'
+        f'{H - 26}" filter="url(#mottle)" opacity=".22"/>'
+        '</g>',
         f'<rect x="23" y="23" width="1134" height="{H - 46}" rx="9" fill="none" '
         f'stroke="{t["line"]}" stroke-width="1"/>',
         # Masthead ala "Criminal News": kotak gelap kiri/kanan ala
@@ -929,6 +1001,20 @@ def render_svg(
             f'<text x="590" y="{H - 27}" text-anchor="middle" fill="{t["panel"]}" '
             f'font-family="{MASTHEAD_SERIF}" font-size="15" font-weight="900" '
             'letter-spacing="4">\u2605 CODING \u00b7 AI \u00b7 WEB \u2605</text>',
+            # Lapisan kertas terakhir: grain, bercak, vignette tepi, dan dua
+            # lipatan. Ditaruh paling atas supaya menimpa tinta juga — begitulah
+            # kertas cetak tua terlihat, teksturnya ada di seluruh permukaan.
+            '<g clip-path="url(#paperClip)">'
+            '<rect x="13" y="13" width="1154" height="'
+            f'{H - 26}" filter="url(#grain)" opacity=".17"/>'
+            '<rect x="13" y="13" width="1154" height="'
+            f'{H - 26}" filter="url(#fiber)" opacity=".13"/>'
+            '<rect x="13" y="13" width="1154" height="'
+            f'{H - 26}" filter="url(#mottle)" opacity=".16"/>'
+            f'<rect x="13" y="13" width="1154" height="{H - 26}" fill="url(#age)"/>'
+            f'<rect x="566" y="13" width="48" height="{H - 26}" fill="url(#creaseV)"/>'
+            f'<rect x="13" y="{H * 0.62:.0f}" width="1154" height="44" fill="url(#creaseH)"/>'
+            '</g>',
             "</svg>",
         ]
     )
