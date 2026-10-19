@@ -1,0 +1,22 @@
+{
+  "_comment": "Biodata for the code card in the README. scripts/profilecard.py turns this into assets/card-profile-dark.svg / -light.svg: a terminal window that types itself. Edit the text here, re-run the script, done. Nothing is fetched, so no workflow keeps this up to date.",
+
+  "filename": "profile.js",
+  "package": "github.com/willdannaltairr",
+  "class": "Human",
+  "variable": "wildan",
+
+  "name": "Wildan Daffi Altair Darmawan",
+  "handle": "@willdannaltairr",
+  "role": "SMK Student · Fullstack Developer",
+  "age": 16,
+  "base": "Indonesia",
+
+  "stack": ["Python", "JavaScript", "TypeScript", "React", "Next.js", "Node.js", "Tailwind", "Dart", "Flutter"],
+  "tools": ["VS Code", "Git", "GitHub", "Vercel"],
+  "focus": "Web · AI · Backend",
+  "goal": "Be a programmer who actually ships",
+  "status": "Open to new opportunities",
+
+  "repos": ["Blog-App", "Blog-App-Backend", "CRUD-DATA-SISWA", "E-commerce-Altaire-Noire"]
+}
