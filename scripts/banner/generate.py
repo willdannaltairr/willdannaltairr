@@ -89,28 +89,32 @@ MONO_UI = "ui-monospace,SFMono-Regular,Consolas,monospace"
 
 THEMES = {
     "dark": {
-        "bg": "#e5d7b8",
-        "panel": "#ede1c4",
-        "panel2": "#dfd1af",
-        "line": "#4a3a26",
-        "muted": "#6b5a40",
-        "text": "#2b2117",
+        "bg": "#B8874C",
+        # Lembar kertas tua: terang di tengah, makin amber ke tepi. Empat
+        # stop ini yang dipakai gradien paperWash, jadi bukan warna rata.
+        "wash": ("#FCE1B0", "#F3D19C", "#E4BA7E", "#CB9D64"),
+        "panel": "#E9C089",
+        "panel2": "#DCAE74",
+        "line": "#4a3520",
+        "muted": "#6b5233",
+        "text": "#2b1e10",
         "portrait": "#000000",
-        "chrome": "#2b2117",
+        "chrome": "#2b1e10",
         "accent": "#7a1f1f",
-        "shadow": "#8a7350",
+        "shadow": "#6b4a26",
     },
     "light": {
-        "bg": "#f4eacc",
-        "panel": "#faf1dc",
-        "panel2": "#ece0bd",
-        "line": "#5b4a32",
-        "muted": "#77644a",
-        "text": "#2b2117",
+        "bg": "#C99A60",
+        "wash": ("#FDE7BC", "#F6D8A6", "#E9C288", "#D2A46B"),
+        "panel": "#F0CB95",
+        "panel2": "#E5BC82",
+        "line": "#5b4527",
+        "muted": "#77603f",
+        "text": "#2b1e10",
         "portrait": "#000000",
-        "chrome": "#2b2117",
+        "chrome": "#2b1e10",
         "accent": "#7a1f1f",
-        "shadow": "#b09a70",
+        "shadow": "#8a6a42",
     },
 }
 
@@ -708,11 +712,12 @@ def render_svg(
         '<feTurbulence type="fractalNoise" baseFrequency=".045 .09" numOctaves="4" seed="11" result="n"/>'
         '<feDisplacementMap in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G"/>'
         '</filter>',
-        # --- tekstur kertas koran -----------------------------------------
-        # Tiga lapis, masing-masing meniru satu hal berbeda dari kertas cetak
-        # tua: butiran halus (grain), serat panjang (fiber), dan bercak
-        # penuaan (mottle). Semuanya feTurbulence, jadi tidak menambah byte
-        # gambar dan tetap ikut di dalam <img> GitHub tanpa JavaScript.
+        # --- tekstur kertas tua -------------------------------------------
+        # Referensinya selembar stok amber tua: terang di tengah, bercak
+        # tidak rata, dan jauh lebih gelap di pinggir. Lapisannya: grain
+        # halus, serat panjang, bercak besar (stain), pulp, dan vignette
+        # tepi. Semua feTurbulence, jadi tidak menambah byte gambar dan
+        # tetap jalan di dalam <img> GitHub tanpa JavaScript.
         '<filter id="grain" x="0" y="0" width="100%" height="100%">'
         '<feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3" '
         'seed="4" result="n"/>'
@@ -729,7 +734,16 @@ def render_svg(
         '<feTurbulence type="fractalNoise" baseFrequency=".012" numOctaves="5" '
         'seed="7" result="n"/>'
         '<feColorMatrix in="n" type="matrix" '
-        'values="0 0 0 0 .38  0 0 0 0 .27  0 0 0 0 .15  0 0 0 .5 0"/>'
+        'values="0 0 0 0 .42  0 0 0 0 .29  0 0 0 0 .14  0 0 0 .6 -.08"/>'
+        '</filter>',
+        # Bercak penuaan berskala besar: inilah yang membuat kertas lama
+        # terlihat belang, bukan sekadar berbutir. Ambang alfa dibuat tajam
+        # (1.7n - .62) supaya terbentuk pulau-pulau, bukan kabut rata.
+        '<filter id="stain" x="-5%" y="-5%" width="110%" height="110%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".0045 .006" '
+        'numOctaves="4" seed="91" result="n"/>'
+        '<feColorMatrix in="n" type="matrix" '
+        'values="0 0 0 0 .38  0 0 0 0 .25  0 0 0 0 .11  0 0 0 1.7 -.62"/>'
         '</filter>',
         # Serat kertas koran (pulp) lebih kasar dari grain: frekuensi rendah,
         # kontras tinggi, arah acak — inilah yang membuat kertas cetak murah
@@ -741,6 +755,22 @@ def render_svg(
         '<feComponentTransfer><feFuncA type="table" '
         'tableValues="0 1 0 1 0 1 0 1 0 1"/></feComponentTransfer>'
         '</filter>',
+        # Tepi sobek: kertas lama tidak pernah bertepi lurus. Displacement
+        # kecil (3px) pada rect kertas membuat garis luarnya bergelombang.
+        '<filter id="deckle" x="-3%" y="-3%" width="106%" height="106%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".018" numOctaves="3" '
+        'seed="5" result="n"/>'
+        '<feDisplacementMap in="SourceGraphic" in2="n" scale="4" '
+        'xChannelSelector="R" yChannelSelector="G"/>'
+        '</filter>',
+        # Cahaya jatuh di tengah lembar: gradien ini yang menggantikan warna
+        # kertas rata.
+        '<radialGradient id="paperWash" cx=".5" cy=".42" r=".8">'
+        f'<stop offset="0" stop-color="{t["wash"][0]}"/>'
+        f'<stop offset=".52" stop-color="{t["wash"][1]}"/>'
+        f'<stop offset=".84" stop-color="{t["wash"][2]}"/>'
+        f'<stop offset="1" stop-color="{t["wash"][3]}"/>'
+        '</radialGradient>',
         f'<clipPath id="paperClip"><rect x="13" y="13" width="1154" '
         f'height="{H - 26}" rx="13"/></clipPath>',
         # Lipatan: kertas dilipat dua kali sebelum dimasukkan amplop, jadi ada
@@ -761,34 +791,32 @@ def render_svg(
         '<stop offset=".56" stop-color="#000" stop-opacity=".08"/>'
         '<stop offset=".70" stop-color="#000" stop-opacity=".05"/>'
         '<stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>',
-        # Tepi menggelap: kertas lama selalu lebih gelap di pinggir.
+        # Tepi menggelap: kertas lama selalu lebih gelap di pinggir, dan di
+        # referensi selisihnya besar (tengah #F0CD97 vs tepi #C08D52).
         '<radialGradient id="age" cx=".5" cy=".46" r=".78">'
-        '<stop offset=".52" stop-color="#4a3a26" stop-opacity="0"/>'
-        '<stop offset=".82" stop-color="#4a3a26" stop-opacity=".12"/>'
-        '<stop offset="1" stop-color="#4a3a26" stop-opacity=".28"/>'
+        '<stop offset=".58" stop-color="#5a3a14" stop-opacity="0"/>'
+        '<stop offset=".78" stop-color="#5a3a14" stop-opacity=".07"/>'
+        '<stop offset=".90" stop-color="#4a2c0c" stop-opacity=".15"/>'
+        '<stop offset="1" stop-color="#3a2208" stop-opacity=".26"/>'
         '</radialGradient>',
         f'<clipPath id="visualClip"><rect x="49" y="{num(124 + MASTHEAD_SHIFT)}" width="390" height="414" rx="3"/></clipPath>',
         "</defs>",
         f"<style>{bio_css}</style>",
-        # Parchment base + double newspaper border.
-        f'<rect width="{W}" height="{H}" rx="18" fill="{t["bg"]}"/>',
-        f'<rect x="13" y="13" width="1154" height="{H - 26}" rx="13" fill="{t["panel"]}" '
-        f'stroke="{t["line"]}" stroke-width="3" filter="url(#shadow)"/>',
-        # Tekstur kertas dasar (di bawah tinta). Lapisan akhir di ujung SVG
-        # menambahkan grain + lipatan di atas semua elemen, seperti kertas
-        # yang benar-benar dicetak.
-        '<g clip-path="url(#paperClip)">'
-        '<rect x="13" y="13" width="1154" height="'
-        f'{H - 26}" filter="url(#grain)" opacity=".30"/>'
-        '<rect x="13" y="13" width="1154" height="'
-        f'{H - 26}" filter="url(#fiber)" opacity=".20"/>'
-        '<rect x="13" y="13" width="1154" height="'
-        f'{H - 26}" filter="url(#pulp)" opacity=".07"/>'
-        '<rect x="13" y="13" width="1154" height="'
-        f'{H - 26}" filter="url(#mottle)" opacity=".22"/>'
-        '</g>',
+        # Lembar kertas: tepi luar yang tidak lurus (deckle), lalu gradien
+        # amber yang terang di tengah dan pekat di pinggir.
+        f'<g filter="url(#deckle)">'
+        f'<rect x="13" y="13" width="1154" height="{H - 26}" rx="13" '
+        f'fill="url(#paperWash)" stroke="{t["line"]}" stroke-width="3" '
+        f'filter="url(#shadow)"/></g>',
         f'<rect x="23" y="23" width="1134" height="{H - 46}" rx="9" fill="none" '
         f'stroke="{t["line"]}" stroke-width="1"/>',
+        # Lubang pin di tengah atas: di referensi kertas ini digantung dengan
+        # satu paku kecil, dan lubangnya jadi gelap karena bayangan di dalam.
+        '<g>'
+        '<ellipse cx="590" cy="27" rx="4.6" ry="5.2" fill="#2a1a08" opacity=".55"/>'
+        '<ellipse cx="590" cy="26.4" rx="2.5" ry="2.9" fill="#1a1004"/>'
+        '<ellipse cx="588.9" cy="25.4" rx="1.1" ry="1.2" fill="#f7dcae" opacity=".7"/>'
+        '</g>',
         # Masthead ala "Criminal News": kotak gelap kiri/kanan ala
         # BREAKING NEWS + judul tengah berhias bintang seperti referensi.
         f'<rect x="44" y="33" width="210" height="26" fill="{t["chrome"]}"/>',
@@ -1001,16 +1029,21 @@ def render_svg(
             f'<text x="590" y="{H - 27}" text-anchor="middle" fill="{t["panel"]}" '
             f'font-family="{MASTHEAD_SERIF}" font-size="15" font-weight="900" '
             'letter-spacing="4">\u2605 CODING \u00b7 AI \u00b7 WEB \u2605</text>',
-            # Lapisan kertas terakhir: grain, bercak, vignette tepi, dan dua
-            # lipatan. Ditaruh paling atas supaya menimpa tinta juga — begitulah
-            # kertas cetak tua terlihat, teksturnya ada di seluruh permukaan.
+            # Lapisan kertas terakhir: butiran halus, serat, bercak penuaan,
+            # pulp, vignette tepi, dan dua lipatan. Ditaruh paling atas supaya
+            # menimpa tinta juga — begitulah kertas tua terlihat: teksturnya
+            # ada di seluruh permukaan, bukan cuma di atas dasar kertas.
             '<g clip-path="url(#paperClip)">'
             '<rect x="13" y="13" width="1154" height="'
-            f'{H - 26}" filter="url(#grain)" opacity=".17"/>'
+            f'{H - 26}" filter="url(#grain)" opacity=".15"/>'
             '<rect x="13" y="13" width="1154" height="'
-            f'{H - 26}" filter="url(#fiber)" opacity=".13"/>'
+            f'{H - 26}" filter="url(#fiber)" opacity=".12"/>'
             '<rect x="13" y="13" width="1154" height="'
-            f'{H - 26}" filter="url(#mottle)" opacity=".16"/>'
+            f'{H - 26}" filter="url(#stain)" opacity=".44"/>'
+            '<rect x="13" y="13" width="1154" height="'
+            f'{H - 26}" filter="url(#mottle)" opacity=".22"/>'
+            '<rect x="13" y="13" width="1154" height="'
+            f'{H - 26}" filter="url(#pulp)" opacity=".05"/>'
             f'<rect x="13" y="13" width="1154" height="{H - 26}" fill="url(#age)"/>'
             f'<rect x="566" y="13" width="48" height="{H - 26}" fill="url(#creaseV)"/>'
             f'<rect x="13" y="{H * 0.62:.0f}" width="1154" height="44" fill="url(#creaseH)"/>'
