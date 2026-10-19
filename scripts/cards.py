@@ -19,7 +19,6 @@ the GraphQL API). Without one the card still renders, minus those three tiles.
 """
 
 from __future__ import annotations
-
 import argparse
 import datetime as dt
 import json
@@ -33,7 +32,7 @@ UA = {"User-Agent": "cards.py"}
 
 THEMES = {
     "dark": {
-        "bg": "#000000", "border": "#30363d", "title": "#aa9bef",
+        "bg": "#090A16", "border": "#30363d", "title": "#aa9bef",
         "text": "#ffffff", "muted": "#ffffff", "value": "#ffffff",
         "accent": "#aa9bef",
     },
@@ -44,7 +43,6 @@ THEMES = {
     },
 }
 
-# GitHub linguist colours for the languages likely to show up here
 LANG_COLOR = {
     "JavaScript": "#f1e05a", "TypeScript": "#3178c6", "Python": "#3572A5",
     "HTML": "#e34c26", "CSS": "#563d7c", "C++": "#f34b7d", "C": "#555555",
@@ -55,9 +53,6 @@ LANG_COLOR = {
 
 FONT = "ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif"
 
-# Octicon outlines, drawn on a 16x16 grid. These are paths rather than the
-# characters U+2605 / U+2442 because those codepoints are missing from a lot of
-# system fonts and fall back to a tofu box.
 ICON_STAR = ("M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 "
              "2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 "
              "01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z")
@@ -77,12 +72,6 @@ def icon(path, x, y, size, fill):
     s = size / 16
     return (f'<path transform="translate({x:.1f},{y:.1f}) scale({s:.3f})" '
             f'fill="{fill}" d="{path}"/>')
-
-
-# --------------------------------------------------------------------------- #
-# api
-# --------------------------------------------------------------------------- #
-
 
 def rest(path: str, token: str | None):
     req = urllib.request.Request("https://api.github.com" + path, headers=dict(UA))
@@ -139,8 +128,6 @@ def fetch_contributions(user: str, token: str | None):
         run = run + 1 if c > 0 else 0
         longest = max(longest, run)
 
-    # Today counts only if it already has activity; an empty today does not
-    # break a streak that was alive yesterday.
     current = 0
     for date, c in reversed(days):
         if c > 0:
@@ -148,11 +135,6 @@ def fetch_contributions(user: str, token: str | None):
         elif date != days[-1][0]:
             break
     return cal["totalContributions"], current, longest
-
-
-# --------------------------------------------------------------------------- #
-# svg helpers
-# --------------------------------------------------------------------------- #
 
 
 def esc(s: str) -> str:
@@ -198,20 +180,12 @@ def frame(w, h, c, body, label):
     )
 
 
-# --------------------------------------------------------------------------- #
-# cards
-# --------------------------------------------------------------------------- #
-
-
 def render_stats(user, stats, theme):
     c = THEMES[theme]
     pad = 22
     tiles = [(v, k) for k, v in stats]
     cols = 3
     rows = (len(tiles) + cols - 1) // cols
-    # Height follows the tile count, so the card does not leave a dead band when
-    # the contribution tiles are unavailable. Measured off the last row's label
-    # baseline rather than a nominal row height.
     rh, W = 46, 480
     H = pad + 52 + (rows - 1) * rh + 17 + pad
     tw = (W - 2 * pad) / cols
@@ -279,9 +253,6 @@ def render_repo(repo, theme):
         x += 17 + text_width(str(count), 11) + 18
 
     return frame(W, H, c, "".join(out), f'{repo["name"]} repository card')
-
-
-# --------------------------------------------------------------------------- #
 
 
 def main(argv=None):
