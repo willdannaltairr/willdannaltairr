@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="assets/source/brad.gif" width="100%" alt="brad">
-
 <picture>
   <source media="(prefers-color-scheme: dark)"  srcset="assets/banner-dark.v9.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/banner-light.v9.svg">
