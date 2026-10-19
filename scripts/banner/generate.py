@@ -7,72 +7,149 @@ Run from the repository root:
 
 from __future__ import annotations
 
-import html
+import json
 import math
+import random
+import sys
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from scipy import ndimage
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from profilecard import esc, width_of  # noqa: E402
+
 SOURCE = ROOT / "assets/source/siganteng.jpeg"
 ASSETS = ROOT / "assets"
+PROFILE = ASSETS / "profile.json"
 LOGOS = Path(__file__).resolve().parent / "logos"
 DATA = Path(__file__).resolve().parent / "data"
+SOURCE_DIR = ROOT / "assets" / "source"
 
-W, H = 1180, 610
-LOOP_SECONDS = 14.2
+# Urutan morphing: portrait -> tb -> rpl -> altair -> code -> stellar -> portrait.
+# Logo SVG code/stellar dipertahankan setelah altair; rust tidak dipakai.
+LOGO_ORDER = ["tb", "rpl", "altair", "code", "stellar"]
+# Semua bentuk (foto + 5 logo) tampil sama lama: satu slot PHASE_SECONDS
+# dengan morph seragam MORPH_SECONDS, sisanya diam (hold). Morph dipecah
+# dua babak dengan titik tengah yang mengembang keluar (bloom) supaya
+# transisinya halus, lembut, dan tidak terasa patah-patah.
+PHASE_SECONDS = 3.4
+MORPH_SECONDS = 1.7
+MORPH_BLOOM = 12.0
+
+W, H = 1180, 778
+# Poster masthead (ala koran WANTED) mendorong panel ke bawah agar muat
+# headline besar + papan nama. Semua koordinat animasi ikut digeser.
+MASTHEAD_SHIFT = 140.0
 INTRO_SECONDS = 3.2
-TRAVELLER_COUNT = 900
+# 2000 partikel terbang + layer titik padat per logo (kisi 2px, cap 55%)
+# supaya siluet tb/rpl/altair/code/stellar tampil padat dan jelas.
+TRAVELLER_COUNT = 2000
+LOGO_DOT_STEP = 2
+LOGO_DOT_CAP = 0.55
 SEED = 314159
 
-ROWS = [
-    ("Nama", "Wildan Daffi Altair Darmawan"),
-    ("Umur", "16 Tahun"),
-    ("Status", "Pelajar"),
-    ("Sekolah", "SMA · Belajar Mandiri"),
-    ("Fokus", "Coding · AI · Web"),
-    ("ToolChain", "VS Code · Git · GitHub"),
-    ("Core.Lang", "Python · JavaScript · HTML/CSS"),
-    ("Core.Frontend", "HTML · CSS · JavaScript"),
-    ("Core.Backend", "Python · Node.js Dasar"),
-    ("Core.Database", "JSON · SQL Dasar"),
-    ("Core.Infra", "GitHub · Vercel"),
-    ("Grid.Mail", "—"),
-    ("Grid.GitHub", "willdannaltairr"),
-    ("Grid.X", "—"),
-    ("Target", "Programmer Muda"),
-]
+# Foto di-dither pada kisi internal 2x (langkah 0.5px poster) supaya
+# detail wajah/tas/sepatu tampil jauh lebih halus; titiknya tetap
+# digambar sebagai bar kecil selebar satu sel kisi internal.
+PORTRAIT_GRID = 2
+PORTRAIT_STEP = 1.0 / PORTRAIT_GRID
+PORTRAIT_WHITE = 190.0
+PORTRAIT_STROKE = 1.5 * PORTRAIT_STEP
+
+BIO_X = 496.0
+BIO_SIZE = 15.5
+BIO_LH = 22.0
+BIO_TOP = 146.0 + MASTHEAD_SHIFT
+# Ritme ketikan: jeda dasar per karakter + variasi (jitter) supaya terasa
+# seperti diketik manusia, plus jeda ekstra setelah spasi/tanda baca dan
+# jeda lebih panjang saat pindah baris. Tidak terlalu cepat, tidak terlalu
+# lama: total satu putaran ketikan dibuat sekitar 10-11 detik.
+BIO_STEP = 0.021
+BIO_JITTER = 0.55
+BIO_SPACE_PAUSE = 0.018
+BIO_PUNCT_PAUSE = 0.055
+BIO_LINE_PAUSE = 0.26
+# Jeda setelah ketikan selesai sebelum animasi mengetik diulang dari kosong.
+BIO_LOOP_PAUSE = 4.0
+
+# Vintage western/newspaper stacks. Disengaja system-fonts saja supaya
+# tampil sama di GitHub <img> tanpa webfont.
+MASTHEAD_SERIF = "Georgia,'Times New Roman','Nimbus Roman',serif"
+WANTED_SLAB = "Impact,Haettenschweiler,'Arial Narrow Bold','Franklin Gothic Heavy',sans-serif"
+TYPEWRITER = "'Courier New',Courier,'Nimbus Mono PS',monospace"
+MONO_UI = "ui-monospace,SFMono-Regular,Consolas,monospace"
 
 THEMES = {
     "dark": {
-        "bg": "#0A101F",
-        "panel": "#0D1628",
-        "panel2": "#101B30",
-        "line": "#25344C",
-        "muted": "#8291A8",
-        "text": "#DDE7F5",
-        "portrait": "#AA9BEF",
-        "chrome": "#22D3EE",
-        "accent": "#10B981",
-        "shadow": "#02050B",
+        "bg": "#e5d7b8",
+        "panel": "#ede1c4",
+        "panel2": "#dfd1af",
+        "line": "#4a3a26",
+        "muted": "#6b5a40",
+        "text": "#2b2117",
+        "portrait": "#000000",
+        "chrome": "#2b2117",
+        "accent": "#7a1f1f",
+        "shadow": "#8a7350",
     },
     "light": {
-        "bg": "#F6F8FA",
-        "panel": "#FFFFFF",
-        "panel2": "#EDF3F7",
-        "line": "#CBD7E1",
-        "muted": "#64748B",
-        "text": "#172033",
-        "portrait": "#4A3D7A",
-        "chrome": "#0891B2",
-        "accent": "#10B981",
-        "shadow": "#AAB7C4",
+        "bg": "#f4eacc",
+        "panel": "#faf1dc",
+        "panel2": "#ece0bd",
+        "line": "#5b4a32",
+        "muted": "#77644a",
+        "text": "#2b2117",
+        "portrait": "#000000",
+        "chrome": "#2b2117",
+        "accent": "#7a1f1f",
+        "shadow": "#b09a70",
     },
 }
+
+# BIO panel sekarang plain-text satu tinta (gaya ketikan koran),
+# bukan syntax-color code. Kuncinya satu warna tinta untuk semua peran.
+BANNER_CARD_THEMES = {
+    "dark": {
+        "kw": "#2b2117", "cls": "#2b2117", "str": "#2b2117",
+        "fn": "#2b2117", "key": "#2b2117", "pn": "#2b2117",
+        "brk": "#2b2117", "num": "#2b2117", "cmt": "#6b5a40",
+        "caret": "#7a1f1f",
+    },
+    "light": {
+        "kw": "#2b2117", "cls": "#2b2117", "str": "#2b2117",
+        "fn": "#2b2117", "key": "#2b2117", "pn": "#2b2117",
+        "brk": "#2b2117", "num": "#2b2117", "cmt": "#77644a",
+        "caret": "#7a1f1f",
+    },
+}
+
+
+def photo_logo_to_silhouette(path: Path, size: int = 400, threshold: int = 200) -> Image.Image:
+    """Convert a JPEG logo (white background) to black-on-transparent silhouette.
+
+    Dark pixels (luminance < threshold) become the opaque shape so the result
+    matches the silhouette format used by sample_logo_points().
+    """
+    photo = Image.open(path).convert("RGB")
+    fitted = photo.copy()
+    fitted.thumbnail((350, 350), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", (size, size), "white")
+    canvas.paste(fitted, ((size - fitted.width) // 2, (size - fitted.height) // 2))
+    gray = np.asarray(ImageOps.grayscale(canvas))
+    mask = gray < threshold
+    silhouette = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    black = Image.new("RGBA", (size, size), (0, 0, 0, 255))
+    alpha = Image.fromarray(np.uint8(mask * 255), "L")
+    silhouette.paste(black, mask=alpha)
+    return silhouette
 
 
 def make_logos() -> dict[str, Image.Image]:
@@ -124,98 +201,226 @@ def make_logos() -> dict[str, Image.Image]:
         d.ellipse((x - 19, y - 19, x + 19, y + 19), fill="black")
     logos["stellar"] = stellar
 
+    # Photo logos (tb/rpl/altair) + SVG code/stellar dipertahankan.
+    photo_sources = {
+        "tb": SOURCE_DIR / "logo tb.jpg",
+        "rpl": SOURCE_DIR / "logo rpl.jpg",
+        "altair": SOURCE_DIR / "logo altair.jpg",
+    }
+    for name, path in photo_sources.items():
+        if not path.exists():
+            raise SystemExit(f"Missing logo source: {path}")
+        logos[name] = photo_logo_to_silhouette(path, size=size)
+
     for name, image in logos.items():
         image.save(LOGOS / f"{name}.png", optimize=True)
     return logos
 
 
-def floyd_steinberg(gray: np.ndarray) -> np.ndarray:
-    """Serpentine 1-bit Floyd-Steinberg diffusion; True means a lit pixel."""
-    work = gray.astype(np.float32) / 255.0
-    out = np.zeros_like(work, dtype=bool)
-    height, width = work.shape
-    for y in range(height):
-        left_to_right = y % 2 == 0
-        xs = range(width) if left_to_right else range(width - 1, -1, -1)
-        direction = 1 if left_to_right else -1
-        for x in xs:
-            old = work[y, x]
-            new = 1.0 if old >= 0.5 else 0.0
-            out[y, x] = bool(new)
-            err = old - new
-            nx = x + direction
-            if 0 <= nx < width:
-                work[y, nx] += err * 7 / 16
-            if y + 1 < height:
-                if 0 <= x - direction < width:
-                    work[y + 1, x - direction] += err * 3 / 16
-                work[y + 1, x] += err * 5 / 16
-                if 0 <= nx < width:
-                    work[y + 1, nx] += err * 1 / 16
-    return out
+@lru_cache(maxsize=None)
+def blue_noise_ranks(height: int, width: int) -> np.ndarray:
+    """Rank tiap sel kisi (0..1) memakai urutan low-discrepancy R2.
+
+    Dipakai sebagai ambang dithering: sel ber-rank kecil lebih dulu
+    menjadi tinta, sehingga sebaran titik selalu rata di semua nada —
+    tidak membentuk garis/gelombang seperti error-diffusion.
+    """
+    total = height * width
+    ranks = np.full((height, width), -1, dtype=np.int64)
+    alpha1, alpha2 = 0.7548776662466927, 0.5698402909980532
+    filled = 0
+    order = 0
+    n = 0
+    limit = total * 3
+    while filled < total and n < limit:
+        px = (0.5 + alpha1 * n) % 1.0
+        py = (0.5 + alpha2 * n) % 1.0
+        cx = min(width - 1, int(px * width))
+        cy = min(height - 1, int(py * height))
+        if ranks[cy, cx] < 0:
+            ranks[cy, cx] = order
+            order += 1
+            filled += 1
+        n += 1
+    # Sisa lubang (sangat sedikit) diisi urutan raster di akhir.
+    for cy in range(height):
+        row = ranks[cy]
+        for cx in range(width):
+            if row[cx] < 0:
+                row[cx] = order
+                order += 1
+    return ranks / float(total)
 
 
-def portrait_points(theme: str, rng: np.random.Generator) -> np.ndarray:
-    """Return sampled x/y banner coordinates from a 300x340 dither grid."""
+# Zona 370x380 foto yang NADANYA mirip dinding (tetap bagian orang):
+# ubun-ubun kena lampu, wajah, tangan, kaos kaki, dan tutup atas tas
+# (lipatan kulit terang yang nadanya mirip bangku). Ambang tiap zona
+# dipilih dari pengukuran piksel supaya dinding di sekitarnya tetap di luar.
+PORTRAIT_CORE = 60.0
+PORTRAIT_ZONES = (
+    ((182, 84, 216, 106), 140.0),
+    ((172, 102, 208, 154), 150.0),
+    ((148, 160, 192, 208), 150.0),
+    ((170, 264, 208, 298), 150.0),
+    ((98, 166, 154, 246), 125.0),
+)
+
+
+def subject_mask(v: np.ndarray) -> np.ndarray:
+    """Mask "orang saja" untuk foto ini (koordinat khusus foto 370x380).
+
+    Dinding kuning, bangku, celah, dan bayangannya dibuang supaya foto
+    tidak tampil sebagai kotak bertitik; badan, wajah, tangan, tas
+    (termasuk lipatan atasnya), dan sepatu (sampai ujung sol) dipertahankan.
+    Caranya: ambang inti gelap + zona terang subjek, lalu morfologi supaya
+    bagian terang yang nadanya mirip latar tetap utuh.
+    """
+    m = v < PORTRAIT_CORE
+    for (x0, y0, x1, y1), limit in PORTRAIT_ZONES:
+        zone = np.zeros_like(m)
+        zone[y0:y1, x0:x1] = True
+        m |= (v < limit) & zone
+    m = ndimage.binary_opening(m, iterations=1)
+    # Buang bingkai: tepi foto (cincin gelap JPEG), kolom tepi foto, dan
+    # sudut kiri-bawah (bayangan lantai/bangku). Baris bawah dipotong di
+    # bawah ujung sol sepatu supaya sepatu tampil utuh (tidak terpotong).
+    m[:3, :] = False
+    m[375:, :] = False
+    m[:, :3] = False
+    m[:, -3:] = False
+    m[:, 40:47] = False
+    m[:, 322:329] = False
+    m[342:, :140] = False
+    # Buang komponen yang menyentuh tepi gambar atau terlalu kecil (bintik
+    # dinding + garis celah vertikal di kanan).
+    labels, count = ndimage.label(m)
+    border = (
+        set(labels[0, :].tolist())
+        | set(labels[-1, :].tolist())
+        | set(labels[:, 0].tolist())
+        | set(labels[:, -1].tolist())
+    )
+    border.discard(0)
+    sizes = ndimage.sum(m, labels, range(1, count + 1))
+    small = {i + 1 for i, size in enumerate(sizes) if size < 40}
+    keep = [i for i in range(1, count + 1) if i not in border and i not in small]
+    m = np.isin(labels, keep)
+    # Rapatkan wajah/tangan ke badan lalu isi rongga terang di dalam subjek.
+    m = ndimage.binary_closing(m, iterations=3)
+    m = ndimage.binary_fill_holes(m)
+    m = ndimage.binary_opening(m, iterations=1)
+    return ndimage.binary_dilation(m, iterations=1)
+
+
+def portrait_points() -> np.ndarray:
+    """Return x/y banner coordinates from the dithered portrait grid.
+
+    Foto ditempel di kertas putih, dinding/bangku dibuang lewat mask
+    "orang saja", nada dinaikkan (high-key) supaya wajah terang, lalu sel
+    GELAP di-dither dengan mask R2 (blue-noise) sehingga semua titik rata,
+    jelas, dan tidak bergaris. Dither dijalankan pada kisi internal 2x
+    (langkah PORTRAIT_STEP) supaya detailnya halus. Dua tema memakai hasil
+    identik.
+    """
     source = Image.open(SOURCE).convert("RGBA")
     # Full photo, never cropped: scale the whole image to fit inside the
-    # 300x340 VISUAL.MAP frame (aspect preserved) and centre it. The side
+    # 370x380 MYSELF frame (aspect preserved) and centre it. The side
     # bars stay transparent, so the dither only ever draws the photo itself.
-    frame_w, frame_h = 300, 340
+    frame_w, frame_h = 370, 380
+    grid_w = frame_w * PORTRAIT_GRID
+    grid_h = frame_h * PORTRAIT_GRID
     fitted = source.copy()
-    fitted.thumbnail((frame_w, frame_h), Image.Resampling.LANCZOS)
-    crop = Image.new("RGBA", (frame_w, frame_h), (0, 0, 0, 0))
+    fitted.thumbnail((grid_w, grid_h), Image.Resampling.LANCZOS)
+    crop = Image.new("RGBA", (grid_w, grid_h), (0, 0, 0, 0))
     crop.alpha_composite(
-        fitted, ((frame_w - fitted.width) // 2, (frame_h - fitted.height) // 2)
+        fitted, ((grid_w - fitted.width) // 2, (grid_h - fitted.height) // 2)
     )
-    rgb = crop.convert("RGB")
-    alpha = np.asarray(crop.getchannel("A"), dtype=np.float32) / 255.0
+    white = Image.new("RGBA", crop.size, "white")
+    white.alpha_composite(crop)
+    base = ImageOps.grayscale(white.convert("RGB"))
 
-    if theme == "dark":
-        lum = np.asarray(ImageOps.grayscale(rgb), dtype=np.float32)
-        prepared = Image.fromarray(np.uint8(np.clip(lum * alpha, 0, 255)), "L")
-        select_lit = True
-    else:
-        white = Image.new("RGBA", crop.size, "white")
-        white.alpha_composite(crop)
-        prepared = ImageOps.grayscale(white.convert("RGB"))
-        select_lit = False
+    # Mask "orang saja" dihitung di kisi 1x (koordinat zona terverifikasi),
+    # lalu di-upscale 2x supaya tiap sel kisi internal mewarisi sel aslinya.
+    coarse_fit = source.copy()
+    coarse_fit.thumbnail((frame_w, frame_h), Image.Resampling.LANCZOS)
+    coarse = Image.new("RGBA", (frame_w, frame_h), (0, 0, 0, 0))
+    coarse.alpha_composite(
+        coarse_fit,
+        ((frame_w - coarse_fit.width) // 2, (frame_h - coarse_fit.height) // 2),
+    )
+    coarse_white = Image.new("RGBA", coarse.size, "white")
+    coarse_white.alpha_composite(coarse)
+    coarse_base = ImageOps.grayscale(coarse_white.convert("RGB"))
+    mask = np.kron(
+        subject_mask(np.asarray(coarse_base).astype(np.float32)),
+        np.ones((PORTRAIT_GRID, PORTRAIT_GRID), dtype=bool),
+    )
 
-    # Equalize against the subject only (ignore empty alpha) so lit skin vs dark
-    # hair doesn't crush midtones; then punch local contrast for facial edges.
-    if theme == "dark":
-        mask = Image.fromarray(np.uint8((alpha > 0.08) * 255), "L")
-        prepared = ImageOps.equalize(prepared, mask=mask)
-    else:
-        prepared = ImageOps.autocontrast(prepared, cutoff=1)
-    prepared = ImageEnhance.Contrast(prepared).enhance(1.35)
-    prepared = prepared.filter(ImageFilter.UnsharpMask(radius=2, percent=175, threshold=1))
-    bits = floyd_steinberg(np.asarray(prepared))
-    active = bits if select_lit else ~bits
-    if theme == "dark":
-        active &= alpha > 0.08
+    # Kurva high-key: titik putih lembut di PORTRAIT_WHITE membuat kulit
+    # wajah tetap terang, sementara jaket & rambut tetap pekat. Tanpa ini
+    # wajah ikut menyatu jadi blob hitam.
+    prepared = base.point(
+        [
+            int(round(min(v / PORTRAIT_WHITE, 1.0) ** 0.9 * 255))
+            for v in range(256)
+        ]
+    )
+    prepared = prepared.filter(
+        ImageFilter.UnsharpMask(radius=3, percent=200, threshold=1)
+    )
 
-    # Keep the full 300×340 lattice — skipping 2×2 cells was the soft/blurry look.
+    # Dithering ambang dengan mask R2 (blue-noise): tiap sel gelap
+    # menyala sesuai rank mask-nya, jadi sebaran titik rata di semua
+    # nada — tidak membentuk garis/gelombang seperti error-diffusion.
+    gray = np.asarray(prepared).astype(np.float32)
+    alpha = np.asarray(crop.getchannel("A"))
+    darkness = 1.0 - gray / 255.0
+    active = (
+        (darkness > blue_noise_ranks(grid_h, grid_w))
+        & (alpha > 0)
+        & mask
+    )
+
+    # Tanpa cap: setiap sel lattice yang gelap ikut digambar supaya
+    # gambar sepadat dan sejelas mungkin.
     ys, xs = np.where(active)
     if len(xs) == 0:
         return np.zeros((0, 2), dtype=np.float32)
-    points = np.column_stack((74 + xs, 154 + ys)).astype(np.float32)
-    if len(points) > 18000:
-        points = points[rng.choice(len(points), 18000, replace=False)]
-    return points
+    return np.column_stack(
+        (
+            59 + xs * PORTRAIT_STEP,
+            139 + MASTHEAD_SHIFT + ys * PORTRAIT_STEP,
+        )
+    ).astype(np.float32)
+
+
+def logo_dots(image: Image.Image) -> np.ndarray:
+    """Titik padat kisi 2px untuk siluet logo, dalam koordinat banner.
+
+    Sel disaring dengan mask R2 (cap LOGO_DOT_CAP) supaya siluet tampil
+    sebagai matriks titik yang rata dan jelas — bukan blok solid.
+    Logo menempati bidang 350x350 di tengah frame MYSELF.
+    """
+    alpha = np.asarray(image.getchannel("A"))
+    ys, xs = np.where(alpha > 127)
+    # Kisi 2px: hanya piksel genap agar antar titik ada jarak merata.
+    keep = (xs % LOGO_DOT_STEP == 0) & (ys % LOGO_DOT_STEP == 0)
+    xs, ys = xs[keep], ys[keep]
+    fx = 69.0 + xs * 0.875
+    fy = 154.0 + MASTHEAD_SHIFT + ys * 0.875
+    ranks = blue_noise_ranks(380, 370)
+    cx = np.clip(np.rint(fx - 59.0).astype(int), 0, 369)
+    cy = np.clip(np.rint(fy - 279.0).astype(int), 0, 379)
+    capped = ranks[cy, cx] < LOGO_DOT_CAP
+    return np.column_stack((fx[capped], fy[capped])).astype(np.float32)
 
 
 def sample_logo_points(
-    image: Image.Image, rng: np.random.Generator, count: int
+    points: np.ndarray, rng: np.random.Generator, count: int
 ) -> np.ndarray:
-    """Sample a silhouette into the portrait frame's visual coordinate space."""
-    alpha = np.asarray(image.getchannel("A"))
-    ys, xs = np.where(alpha > 127)
-    chosen = rng.choice(len(xs), count, replace=len(xs) < count)
-    # Logo occupies a centered 270x270 square inside VISUAL.MAP.
-    return np.column_stack((89 + xs[chosen] * 0.675, 188 + ys[chosen] * 0.675)).astype(
-        np.float32
-    )
+    """Pilih `count` titik terbang dari layer titik padat logo."""
+    chosen = rng.choice(len(points), count, replace=len(points) < count)
+    return points[chosen]
 
 
 def transport(source: np.ndarray, target: np.ndarray) -> np.ndarray:
@@ -230,12 +435,18 @@ def num(value: float) -> str:
     return f"{value:.1f}".rstrip("0").rstrip(".")
 
 
-def point_path(points: np.ndarray) -> str:
-    """Aggregate adjacent horizontal one-pixel dots into compact SVG path runs."""
+def point_path(points: np.ndarray, step: float = 1.0) -> str:
+    """Aggregate adjacent horizontal dots into compact SVG path runs.
+
+    Titik boleh berada di kisi halus (step < 1, mis. 0.5px untuk foto
+    resolusi ganda); run yang berdekatan tetap digabung jadi satu bar.
+    """
     if not len(points):
         return ""
-    integer = np.rint(points).astype(int)
-    unique = sorted({(int(x), int(y)) for x, y in integer}, key=lambda p: (p[1], p[0]))
+    quantized = np.rint(np.asarray(points) / step).astype(int)
+    unique = sorted(
+        {(int(x), int(y)) for x, y in quantized}, key=lambda p: (p[1], p[0])
+    )
     chunks: list[str] = []
     i = 0
     while i < len(unique):
@@ -245,19 +456,151 @@ def point_path(points: np.ndarray) -> str:
         while i < len(unique) and unique[i][1] == y and unique[i][0] <= x1 + 1:
             x1 = unique[i][0]
             i += 1
-        chunks.append(f"M{x0} {y}h{x1 - x0 + 1}")
+        chunks.append(
+            f"M{num(x0 * step)} {num(y * step)}h{num((x1 - x0 + 1) * step)}"
+        )
     return "".join(chunks)
 
 
-def dotted_leader(x1: float, x2: float, y: float) -> str:
-    if x2 <= x1:
-        return ""
-    return "".join(f"M{x} {num(y)}h1" for x in np.arange(x1, x2, 5.0))
+def bio_plain_lines(p: dict) -> list[str]:
+    """Biodata sebagai teks polos gaya koran (bukan syntax code)."""
+    stack = " - ".join(p["stack"][:6])
+    tools = ", ".join(p["tools"])
+    return [
+        f"{p['name']}",
+        f"{p['role']} - {p['age']} - {p['base']}",
+        "",
+        f"STACK: {stack}",
+        f"TOOLS: {tools}",
+        f"FOCUS: {p['focus']}",
+        "",
+        f"GOAL: {p['goal']}.",
+        f"STATUS: {p['status']}.",
+        "",
+        f"{p['package']} - hello, world.",
+    ]
 
 
-def text_width(text: str, font_size: float) -> float:
-    """Stable monospace width used both for textLength and leader placement."""
-    return len(text) * font_size * 0.605
+def bio_delays(code: list[str]) -> list[list[float]]:
+    """Waktu reveal per karakter dengan ritme ketikan yang natural.
+
+    Jeda antar karakter bervariasi (jitter), ada jeda ekstra setelah spasi
+    dan tanda baca, dan jeda lebih panjang saat pindah baris — supaya
+    terasa benar-benar seperti sedang diketik: tidak terlalu cepat, tapi
+    juga tidak terlalu lama.
+    """
+    rnd = random.Random(7)
+    out: list[list[float]] = []
+    t = 0.0
+    for line in code:
+        row: list[float] = []
+        for ch in line:
+            t += BIO_STEP * rnd.uniform(1.0 - BIO_JITTER, 1.0 + BIO_JITTER)
+            row.append(t)
+            if ch == " ":
+                t += BIO_SPACE_PAUSE * rnd.uniform(0.6, 1.4)
+            elif ch in ".,:;!?":
+                t += BIO_PUNCT_PAUSE * rnd.uniform(0.7, 1.5)
+            elif ch in "-/&":
+                t += BIO_PUNCT_PAUSE * 0.5 * rnd.uniform(0.6, 1.2)
+        t += BIO_LINE_PAUSE * rnd.uniform(0.85, 1.25)
+        out.append(row)
+    return out
+
+
+def bio_panel(profile: dict, theme: str) -> tuple[str, str]:
+    """Return biodata typing rules + markup as plain typewriter text.
+
+    Animasi mengetik dibuat LOOPING: satu siklus = ketik semua baris,
+    jeda (BIO_LOOP_PAUSE), lalu ulang dari kosong. Tiap glyph punya
+    keyframes sendiri yang menyembunyikannya dari awal siklus sampai
+    giliran ketiknya, jadi resetnya serentak dan urutannya tetap. Bar
+    ketik (caret) ikut berjalan mengikuti posisi ketikan lewat animasi
+    SMIL discrete, lalu berkedip di ujung teks saat menunggu siklus
+    berikutnya.
+    """
+    card = BANNER_CARD_THEMES[theme]
+    code = bio_plain_lines(profile)
+    delays = bio_delays(code)
+    total = max((max(row) for row in delays if row), default=0.0)
+    cycle = total + BIO_LOOP_PAUSE  # durasi satu putaran: ketik + jeda
+
+    css = [
+        "@keyframes bl{0%,49%{opacity:1}50%,100%{opacity:0}}",
+        ".caret{animation:bl 1.1s steps(1,end) infinite}",
+        ".bio text{white-space:pre}",
+    ]
+
+    tspans: list[str] = []
+    # Posisi caret per karakter: maju setiap glyph muncul, turun ke baris
+    # berikutnya begitu barisnya berganti.
+    caret_times: list[float] = [0.0]
+    caret_xs: list[float] = [BIO_X]
+    caret_ys: list[float] = [BIO_TOP - BIO_SIZE + 3]
+    n = 0
+    for index, (line, times) in enumerate(zip(code, delays)):
+        if not line:
+            continue
+        row = []
+        # Baris pertama = nama: tebal + sedikit lebih besar.
+        bold = index == 0
+        size = BIO_SIZE + 2.5 if bold else BIO_SIZE
+        # Tanpa pewarnaan sintaks: semua glyph satu tinta koran.
+        for k, ch in enumerate(line):
+            delay = times[k]
+            n += 1
+            # Persen reveal di dalam siklus; 0.01% = lompatan satu frame.
+            reveal = delay / cycle * 100.0
+            css.append(
+                f"@keyframes k{n}{{0%,{reveal:.3f}%{{opacity:0}}"
+                f"{reveal + 0.01:.3f}%,100%{{opacity:1}}}}"
+            )
+            css.append(f".d{n}{{animation:k{n} {cycle:.2f}s linear infinite}}")
+            row.append(
+                f'<tspan class="d{n}" fill="{card["key"]}">'
+                f"{esc(ch)}</tspan>"
+            )
+            caret_times.append(delay)
+            caret_xs.append(BIO_X + width_of(line[: k + 1], size))
+            caret_ys.append(BIO_TOP + index * BIO_LH - BIO_SIZE + 3)
+        y = BIO_TOP + index * BIO_LH
+        weight = "700" if bold else "400"
+        tspans.append(
+            f'<text x="{num(BIO_X)}" y="{num(y)}" '
+            f'font-weight="{weight}" '
+            f'font-size="{num(size)}" '
+            f'textLength="{width_of(line, size):.1f}" lengthAdjust="spacing">'
+            f'{"".join(row)}</text>'
+        )
+
+    last = len(code) - 1
+    while last > 0 and not code[last]:
+        last -= 1
+    last_size = BIO_SIZE + 2.5 if last == 0 else BIO_SIZE
+    cx = BIO_X + width_of(code[last], last_size) + 1
+    cy = BIO_TOP + last * BIO_LH - BIO_SIZE + 3
+    key_times = ";".join(
+        f"{v / cycle:.5f}".rstrip("0").rstrip(".") for v in caret_times
+    )
+    values_x = ";".join(num(v) for v in caret_xs)
+    values_y = ";".join(num(v) for v in caret_ys)
+    caret = (
+        f'<g class="bio-caret"><rect class="caret" x="{num(cx)}" y="{num(cy)}" '
+        f'width="{num(BIO_SIZE * 0.575)}" height="{num(BIO_SIZE + 2)}" rx="2.5" '
+        f'fill="{card["caret"]}">'
+        f'<animate attributeName="x" begin="0s" dur="{cycle:.2f}s" '
+        f'repeatCount="indefinite" calcMode="discrete" keyTimes="{key_times}" '
+        f'values="{values_x}"/>'
+        f'<animate attributeName="y" begin="0s" dur="{cycle:.2f}s" '
+        f'repeatCount="indefinite" calcMode="discrete" keyTimes="{key_times}" '
+        f'values="{values_y}"/>'
+        f"</rect></g>"
+    )
+    head = (
+        f'<g class="bio" font-family="{TYPEWRITER}" font-size="{num(BIO_SIZE)}" '
+        f'xml:space="preserve" fill="{card["key"]}">'
+    )
+    return "".join(css), head + "".join(tspans) + caret + "</g>"
 
 
 def animate_values(points: list[np.ndarray], index: int) -> str:
@@ -268,182 +611,324 @@ def render_svg(
     theme_name: str,
     portrait: np.ndarray,
     logo_points: dict[str, np.ndarray],
+    logo_dense: dict[str, np.ndarray],
     rng: np.random.Generator,
 ) -> str:
     t = THEMES[theme_name]
     n = min(TRAVELLER_COUNT, len(portrait))
     source = portrait[rng.choice(len(portrait), n, replace=False)]
-    rust = transport(source, logo_points["rust"][:n])
-    code = transport(rust, logo_points["code"][:n])
-    stellar = transport(code, logo_points["stellar"][:n])
+    # Optimal-transport chain mengikuti LOGO_ORDER:
+    # portrait -> tb -> rpl -> altair -> code -> stellar -> portrait.
+    ordered: list[np.ndarray] = []
+    prev = source
+    for name in LOGO_ORDER:
+        pts = transport(prev, logo_points[name][:n])
+        ordered.append(pts)
+        prev = pts
 
-    # Explicit uneven phase boundaries: 3.0 portrait, 2.0 per logo,
-    # and four 1.3 transitions = 14.2 seconds.
-    times = [0, 3.0, 4.3, 6.3, 7.6, 9.6, 10.9, 12.9, 14.2]
-    key_times = ";".join(num(v / LOOP_SECONDS) for v in times)
+    # Slot seragam: foto & tiap logo tampil sama lama (PHASE_SECONDS),
+    # dengan morph seragam MORPH_SECONDS di antaranya. Tiap morph dipecah
+    # dua babak (ease-in lalu ease-out) dengan titik tengah yang melengkung
+    # keluar dari pusat frame, jadi perpindahannya mengembang halus dan
+    # kecepatannya tidak patah di tengah.
+    half = MORPH_SECONDS / 2.0
+    times: list[float] = [0.0, PHASE_SECONDS]
+    cursor = PHASE_SECONDS
+    for _ in LOGO_ORDER:
+        cursor += half
+        times.append(cursor)  # bloom midpoint
+        cursor += half
+        times.append(cursor)  # tiba di bentuk berikutnya
+        cursor += PHASE_SECONDS - MORPH_SECONDS
+        times.append(cursor)  # selesai hold
+    cursor += half
+    times.append(cursor)  # bloom midpoint pulang
+    cursor += half
+    times.append(cursor)  # kembali ke foto (batas loop)
+    loop_seconds = times[-1]
+    # Presisi 4 desimal khusus keyTimes: format 1 desimal membuat beberapa
+    # key bertabrakan (durasi tiap bentuk jadi tidak seragam).
+    key_times = ";".join(
+        f"{v / loop_seconds:.4f}".rstrip("0").rstrip(".") for v in times
+    )
+    # Spline: hold bebas; dua babak morph memakai ease-in yang berakhir
+    # dengan kecepatan penuh lalu ease-out yang mulai dengan kecepatan
+    # penuh — sambungan keduanya mulus tanpa hentakan.
+    hold_spline = "0.42 0 0.58 1"
+    in_spline = "0.42 0 1 1"
+    out_spline = "0 0 0.58 1"
+    splines = [hold_spline]
+    for _ in LOGO_ORDER:
+        splines += [in_spline, out_spline, hold_spline]
+    splines += [in_spline, out_spline]
+    key_splines = ";".join(splines)
     # Returning each traveller to its exact starting portrait coordinate keeps
     # the repeat boundary seamless. All logo-to-logo morphs use optimal transport.
-    frames = [source, source, rust, rust, code, code, stellar, stellar, source]
-    opacity_values = "0;0;1;1;1;1;1;1;0"
+    center = np.array([59.0 + 370.0 / 2.0, 139.0 + MASTHEAD_SHIFT + 380.0 / 2.0])
+
+    def bloom(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        """Titik tengah perpindahan, didorong keluar dari pusat frame."""
+        mid = (a + b) / 2.0
+        d = mid - center
+        norm = np.hypot(d[:, 0], d[:, 1])
+        norm[norm < 1e-6] = 1.0
+        return mid + d / norm[:, None] * MORPH_BLOOM
+
+    frames: list[np.ndarray] = [source, source]
+    prev = source
+    for pts in ordered:
+        frames.extend([bloom(prev, pts), pts, pts])
+        prev = pts
+    frames.append(bloom(prev, source))
+    frames.append(source)
+    opacity_values = ";".join(["0", "0"] + ["1"] * (len(frames) - 3) + ["0"])
+    bio_css, bio_markup = bio_panel(
+        json.loads(PROFILE.read_text(encoding="utf-8")), theme_name
+    )
 
     parts: list[str] = [
         '<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" '
         'aria-labelledby="title desc">',
-        "<title id=\"title\">Wildan Daffi Altair Darmawan's live system profile</title>",
-        '<desc id="desc">Animated terminal profile with a dithered portrait and '
-        "Rust, code, and Stellar silhouettes.</desc>",
+        "<title id=\"title\">Wildan Daffi Altair Darmawan's wanted poster profile</title>",
+        '<desc id="desc">Vintage wanted-poster profile with animated dithered '
+        "portrait mugshot (MYSELF), TB, RPL, Altair, code, and Stellar "
+        "silhouettes, and a plain-text typing biodata."
+        "</desc>",
         "<defs>",
         '<filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">'
         f'<feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="{t["shadow"]}" '
         'flood-opacity=".28"/></filter>',
         '<filter id="glow" x="-100%" y="-100%" width="300%" height="300%">'
-        f'<feGaussianBlur stdDeviation="3" result="b"/><feFlood flood-color="{t["chrome"]}" '
+        f'<feGaussianBlur stdDeviation="3" result="b"/><feFlood flood-color="{t["accent"]}" '
         'flood-opacity=".35"/><feComposite in2="b" operator="in"/>'
         '<feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>',
-        '<clipPath id="visualClip"><rect x="49" y="124" width="390" height="414" rx="3"/></clipPath>',
+        # Tepi tinta kasar ala poster cetakan lama (dipakai headline WANTED).
+        '<filter id="rough" x="-6%" y="-14%" width="112%" height="128%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".045 .09" numOctaves="4" seed="11" result="n"/>'
+        '<feDisplacementMap in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G"/>'
+        '</filter>',
+        f'<clipPath id="visualClip"><rect x="49" y="{num(124 + MASTHEAD_SHIFT)}" width="390" height="414" rx="3"/></clipPath>',
         "</defs>",
+        f"<style>{bio_css}</style>",
+        # Parchment base + double newspaper border.
         f'<rect width="{W}" height="{H}" rx="18" fill="{t["bg"]}"/>',
-        f'<rect x="13" y="13" width="1154" height="584" rx="13" fill="{t["panel"]}" '
-        f'stroke="{t["line"]}" filter="url(#shadow)"/>',
-        f'<path d="M13 62H1167" stroke="{t["line"]}"/>',
-        '<circle cx="38" cy="38" r="6" fill="#FF5F57"/>'
-        '<circle cx="59" cy="38" r="6" fill="#FEBC2E"/>'
-        '<circle cx="80" cy="38" r="6" fill="#28C840"/>',
-        f'<text x="590" y="43" text-anchor="middle" fill="{t["muted"]}" '
-        'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" '
-        'letter-spacing=".4">profile.sh --live</text>',
-        # Left visual frame.
-        f'<rect x="35" y="88" width="418" height="472" rx="6" fill="{t["panel2"]}" '
-        f'stroke="{t["line"]}"/>',
-        f'<path d="M35 124H453" stroke="{t["line"]}"/>',
-        f'<text x="49" y="111" fill="{t["chrome"]}" '
-        'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" '
-        'font-weight="700" letter-spacing="1.2">VISUAL.MAP</text>',
-        f'<text x="438" y="111" text-anchor="end" fill="{t["muted"]}" '
-        'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11">300×340 / 1-BIT</text>',
-        f'<path d="M49 141h12M49 141v12M439 141h-12M439 141v12M49 539h12M49 539v-12'
-        f'M439 539h-12M439 539v-12" fill="none" stroke="{t["chrome"]}" opacity=".55"/>',
+        f'<rect x="13" y="13" width="1154" height="{H - 26}" rx="13" fill="{t["panel"]}" '
+        f'stroke="{t["line"]}" stroke-width="3" filter="url(#shadow)"/>',
+        f'<rect x="23" y="23" width="1134" height="{H - 46}" rx="9" fill="none" '
+        f'stroke="{t["line"]}" stroke-width="1"/>',
+        # Masthead ala "Criminal News": kotak gelap kiri/kanan ala
+        # BREAKING NEWS + judul tengah berhias bintang seperti referensi.
+        f'<rect x="44" y="33" width="210" height="26" fill="{t["chrome"]}"/>',
+        f'<text x="149" y="50" text-anchor="middle" fill="{t["panel"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="14" font-weight="700" '
+        'letter-spacing="1.5">\u2605 CODING \u00b7 AI \u00b7 WEB \u2605</text>',
+        f'<text x="452" y="49" text-anchor="middle" fill="{t["chrome"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="15">\u2605</text>',
+        f'<text x="590" y="50" text-anchor="middle" fill="{t["chrome"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="24" font-weight="900" '
+        'letter-spacing="3">PROFILE NEWS</text>',
+        f'<text x="728" y="49" text-anchor="middle" fill="{t["chrome"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="15">\u2605</text>',
+        f'<rect x="926" y="33" width="210" height="26" fill="{t["chrome"]}"/>',
+        f'<text x="1031" y="50" text-anchor="middle" fill="{t["panel"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="14" font-weight="700" '
+        'letter-spacing="1.5">\u2605 LIVE EDITION \u2605</text>',
+        f'<path d="M23 62H1157" stroke="{t["line"]}" stroke-width="1"/>',
+        # Band VOL. 16 / MOST WANTED / handle: latar coklat gelap (chrome)
+        # seperti bar "CODING · AI · WEB" paling bawah.
+        f'<rect x="23" y="62" width="1134" height="28" fill="{t["chrome"]}"/>',
+        f'<text x="44" y="80" fill="{t["panel"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="12" font-weight="700" '
+        'letter-spacing="1.2">VOL. 16 \u2014 ID</text>',
+        f'<text x="466" y="80" text-anchor="middle" fill="{t["panel"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="11">\u2605</text>',
+        f'<text x="590" y="80" text-anchor="middle" fill="{t["panel"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="12" font-weight="700" '
+        'letter-spacing="2.5">MOST WANTED EDITION</text>',
+        f'<text x="714" y="80" text-anchor="middle" fill="{t["panel"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="11">\u2605</text>',
+        f'<text x="1136" y="80" text-anchor="end" fill="{t["panel"]}" '
+        f'font-family="{MONO_UI}" font-size="12" font-weight="700" '
+        'letter-spacing=".6">@willdannaltairr</text>',
+        f'<path d="M23 90H1157" stroke="{t["line"]}" stroke-width="2"/>',
+        # Headline besar WANTED, tepinya dikasarkan ala tinta poster.
+        # Font sedikit dikecilkan + baseline digeser turun supaya ada gap
+        # jelas dari garis band di atasnya (jangan mentok).
+        f'<text x="590" y="171" text-anchor="middle" fill="{t["chrome"]}" '
+        f'font-family="{WANTED_SLAB}" font-size="88" font-weight="900" '
+        'letter-spacing="18" filter="url(#rough)">WANTED</text>',
+        f'<rect x="272" y="177" width="636" height="38" rx="4" fill="none" '
+        f'stroke="{t["line"]}" stroke-width="2"/>',
+        f'<rect x="278" y="183" width="624" height="26" rx="2" fill="none" '
+        f'stroke="{t["line"]}" stroke-width="1"/>',
+        f'<text x="590" y="202" text-anchor="middle" fill="{t["chrome"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="23" font-weight="900" '
+        'letter-spacing="2">\u2605 WILDAN DAFFI ALTAIR DARMAWAN \u2605</text>',
+        # Garis pemisah tipis di bawah papan nama (ala poster referensi).
+        f'<path d="M35 220H1145" stroke="{t["line"]}" stroke-width="1.5"/>',
+        # Left visual frame (mugshot). Geometri digeser +140, animasi ikut.
+        f'<rect x="35" y="{num(88 + MASTHEAD_SHIFT)}" width="418" height="472" rx="6" fill="{t["panel2"]}" '
+        f'stroke="{t["line"]}" stroke-width="2"/>',
+        f'<path d="M35 {num(124 + MASTHEAD_SHIFT)}H453" stroke="{t["line"]}" stroke-width="1.5"/>',
+        f'<text x="49" y="{num(111 + MASTHEAD_SHIFT)}" fill="{t["chrome"]}" '
+        f'font-family="{MASTHEAD_SERIF}" font-size="17" '
+        'font-weight="900" letter-spacing="1.2">MYSELF</text>',
+        f'<text x="438" y="{num(111 + MASTHEAD_SHIFT)}" text-anchor="end" fill="{t["muted"]}" '
+        f'font-family="{MONO_UI}" font-size="12">MUGSHOT \u00b7 370\u00d7380 / 1-BIT</text>',
+        # Garis tinggi mugshot di belakang titik-titik.
+        f'<g stroke="{t["line"]}" opacity=".22">'
+        + "".join(
+            f'<path d="M49 {num(y)}H439" stroke-width="1"/>'
+            f'<text x="56" y="{num(y - 5)}" fill="{t["muted"]}" '
+            f'font-family="{MONO_UI}" font-size="9" opacity=".9">{5 - i}</text>'
+            for i, y in enumerate(range(int(300 + MASTHEAD_SHIFT), int(640 + MASTHEAD_SHIFT), 42))
+        )
+        + "</g>",
+        f'<path d="M49 {num(141 + MASTHEAD_SHIFT)}h12M49 {num(141 + MASTHEAD_SHIFT)}v12'
+        f'M439 {num(141 + MASTHEAD_SHIFT)}h-12M439 {num(141 + MASTHEAD_SHIFT)}v12'
+        f'M49 {num(539 + MASTHEAD_SHIFT)}h12M49 {num(539 + MASTHEAD_SHIFT)}v-12'
+        f'M439 {num(539 + MASTHEAD_SHIFT)}h-12M439 {num(539 + MASTHEAD_SHIFT)}v-12" '
+        f'fill="none" stroke="{t["chrome"]}" opacity=".55"/>',
         '<g clip-path="url(#visualClip)" shape-rendering="crispEdges">',
         # Loop layer stays visible at t=0 so camo/static first frames still show the face.
         # Intro duplicate below shimmers on top, then hands off at 3.2s.
         '<g opacity="1">',
     ]
 
-    # Dense portrait drift: 94 independently noisy bands moving toward Rust's centroid.
-    rust_centroid = rust.mean(axis=0)
-    band_ids = rng.integers(0, 94, size=len(portrait))
-    noise = rng.normal(0, 4, size=(94, 2))
-    for band in range(94):
+    # Dense portrait drift: 120 fine bands gliding subtly toward first logo.
+    # Noise kept small so the face stays tidy and readable during the hold.
+    # Kisi titik ditulis dalam koordinat kisi internal (2x) di dalam group
+    # scale(.5) supaya path datanya pendek — hasil visual sama persis.
+    first_centroid = ordered[0].mean(axis=0)
+    band_ids = rng.integers(0, 120, size=len(portrait))
+    noise = rng.normal(0, 2.5, size=(120, 2))
+    total_frames = len(frames)
+    drift_opacity = ";".join(
+        [".94", ".94", ".47", "0"] + ["0"] * (total_frames - 5) + [".94"]
+    )
+    grid_origin = np.array([59.0, 139.0 + MASTHEAD_SHIFT])
+    parts.append(
+        f'<g transform="translate({num(grid_origin[0])} '
+        f'{num(grid_origin[1])}) scale(.5)">'
+    )
+    for band in range(120):
         pts = portrait[band_ids == band]
         if not len(pts):
             continue
         centroid = pts.mean(axis=0)
-        delta = (rust_centroid - centroid) * 0.18 + noise[band]
-        d = point_path(pts)
+        delta = ((first_centroid - centroid) * 0.12 + noise[band]) * PORTRAIT_GRID
+        dx, dy = num(delta[0]), num(delta[1])
+        d = point_path((pts - grid_origin) * PORTRAIT_GRID)
+        drift_values = ";".join(
+            [
+                "0 0",
+                "0 0",
+                f"{num(delta[0] * 0.5)} {num(delta[1] * 0.5)}",
+                f"{dx} {dy}",
+                f"{dx} {dy}",
+            ]
+            + ["0 0"] * (total_frames - 5)
+        )
         parts.append(
-            f'<path d="{d}" fill="none" stroke="{t["portrait"]}" stroke-width="1" '
-            'opacity=".94">'
-            f'<animateTransform attributeName="transform" type="translate" begin="{INTRO_SECONDS}s" '
-            f'dur="{LOOP_SECONDS}s" repeatCount="indefinite" calcMode="linear" '
-            f'keyTimes="{key_times}" values="0 0;0 0;{num(delta[0])} {num(delta[1])};'
-            f'{num(delta[0])} {num(delta[1])};0 0;0 0;0 0;0 0;0 0"/>'
-            f'<animate attributeName="opacity" begin="{INTRO_SECONDS}s" dur="{LOOP_SECONDS}s" '
+            f'<path d="{d}" fill="none" '
+            f'stroke="{t["portrait"]}" '
+            f'stroke-width="{num(PORTRAIT_STROKE * PORTRAIT_GRID)}" opacity=".94">'
+            f'<animateTransform attributeName="transform" type="translate" '
+            f'begin="{INTRO_SECONDS}s" '
+            f'dur="{num(loop_seconds)}s" repeatCount="indefinite" calcMode="spline" '
+            f'keyTimes="{key_times}" keySplines="{key_splines}" values="{drift_values}"/>'
+            f'<animate attributeName="opacity" begin="{INTRO_SECONDS}s" dur="{num(loop_seconds)}s" '
             f'repeatCount="indefinite" keyTimes="{key_times}" '
-            'values=".94;.94;0;0;0;0;0;0;.94"/></path>'
+            f'values="{drift_opacity}"/></path>'
+        )
+    parts.append("</g>")
+
+    # Layer titik padat per logo: menyala saat partikel tiba sehingga
+    # tiap ikon tampil penuh titik yang rata & jelas, lalu memudar saat
+    # partikel terbang ke bentuk berikutnya. Opacity 0.5 di titik tengah
+    # tiap morph membuat bentuk lama & baru saling silang dengan rata
+    # (total tetap penuh), jadi transisinya lembut.
+    for slot, name in enumerate(LOGO_ORDER):
+        fade = ["0"] * len(times)
+        fade[2 + 3 * slot] = "0.5"
+        fade[3 + 3 * slot] = "1"
+        fade[4 + 3 * slot] = "1"
+        fade[5 + 3 * slot] = "0.5"
+        fade[6 + 3 * slot] = "0"
+        parts.append(
+            f'<path d="{point_path(logo_dense[name])}" fill="none" '
+            f'stroke="{t["portrait"]}" stroke-width="1.5" opacity="0">'
+            f'<animate attributeName="opacity" begin="{INTRO_SECONDS}s" '
+            f'dur="{num(loop_seconds)}s" repeatCount="indefinite" '
+            f'keyTimes="{key_times}" values="{";".join(fade)}"/></path>'
         )
 
     # Optimal-transport travellers, represented as tiny path squares (never glyphs).
     for i in range(n):
         positions = animate_values(frames, i)
         parts.append(
-            f'<path d="M-.65-.65h1.3v1.3h-1.3z" fill="{t["portrait"]}">'
+            f'<path d="M-.9-.9h1.8v1.8h-1.8z" fill="{t["portrait"]}">'
             f'<animateTransform attributeName="transform" type="translate" begin="{INTRO_SECONDS}s" '
-            f'dur="{LOOP_SECONDS}s" repeatCount="indefinite" calcMode="linear" '
-            f'keyTimes="{key_times}" values="{positions}"/>'
-            f'<animate attributeName="opacity" begin="{INTRO_SECONDS}s" dur="{LOOP_SECONDS}s" '
+            f'dur="{num(loop_seconds)}s" repeatCount="indefinite" calcMode="spline" '
+            f'keyTimes="{key_times}" keySplines="{key_splines}" values="{positions}"/>'
+            f'<animate attributeName="opacity" begin="{INTRO_SECONDS}s" dur="{num(loop_seconds)}s" '
             f'repeatCount="indefinite" calcMode="linear" keyTimes="{key_times}" '
             f'values="{opacity_values}"/></path>'
         )
     parts.append("</g>")
 
-    # One-shot scattered intro: sixty random, interleaved point groups.
-    intro_ids = rng.integers(0, 60, size=len(portrait))
-    order = rng.permutation(60)
-    starts = np.empty(60)
-    starts[order] = np.linspace(0.05, 1.2, 60)
-    for group in range(60):
-        pts = portrait[intro_ids == group]
-        if not len(pts):
-            continue
-        parts.append(
-            f'<path d="{point_path(pts)}" fill="none" stroke="{t["portrait"]}" '
-            'stroke-width="1" opacity="0">'
-            f'<animate attributeName="opacity" begin="{num(starts[group])}s" dur=".8s" '
-            'values="0;1" fill="freeze"/>'
-            '<animate attributeName="opacity" begin="3.08s" dur=".12s" values="1;0" fill="freeze"/>'
-            "</path>"
-        )
     parts.extend(
         [
             "</g>",
-            # Small frame telemetry.
-            f'<text x="58" y="551" fill="{t["muted"]}" '
-            'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="10">'
-            f'PTS {len(portrait):05d} · FS/SERPENTINE</text>',
-            # Right information panel.
-            f'<rect x="474" y="88" width="672" height="472" rx="6" fill="{t["panel2"]}" '
-            f'stroke="{t["line"]}"/>',
-            f'<path d="M474 124H1146" stroke="{t["line"]}"/>',
-            f'<text x="490" y="111" fill="{t["chrome"]}" '
-            'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="13" '
-            'font-weight="700" letter-spacing="1.2">SYSTEM.INFO</text>',
-            # LIVE badge and handle pill.
-            '<g filter="url(#glow)"><circle cx="915" cy="106" r="4" fill="#FF4D5A">'
+            # Small frame telemetry + nomor tahanan ala poster.
+            f'<text x="58" y="{num(551 + MASTHEAD_SHIFT)}" fill="{t["muted"]}" '
+            f'font-family="{MONO_UI}" font-size="13">'
+            f'PTS {len(portrait):05d} \u00b7 BLUE-NOISE</text>',
+            f'<text x="438" y="{num(551 + MASTHEAD_SHIFT)}" text-anchor="end" fill="{t["muted"]}" '
+            f'font-family="{MONO_UI}" font-size="11">NO. 081541015</text>',
+            # Right information panel -> kotak DESCRIPTIVE INFORMATION.
+            f'<rect x="474" y="{num(88 + MASTHEAD_SHIFT)}" width="672" height="472" rx="6" fill="{t["panel"]}" '
+            f'stroke="{t["line"]}" stroke-width="2"/>',
+            f'<rect x="480" y="{num(94 + MASTHEAD_SHIFT)}" width="660" height="460" rx="4" fill="none" '
+            f'stroke="{t["line"]}" stroke-width="1" opacity=".45"/>',
+            f'<path d="M474 {num(124 + MASTHEAD_SHIFT)}H1146" stroke="{t["line"]}" stroke-width="1.5"/>',
+            f'<text x="810" y="{num(111 + MASTHEAD_SHIFT)}" text-anchor="middle" fill="{t["chrome"]}" '
+            f'font-family="{MASTHEAD_SERIF}" font-size="16" '
+            'font-weight="900" letter-spacing="1.2">\u2605 DESCRIPTIVE INFORMATION \u2605</text>',
+            # Baris penutup ala "WANTED FOR" poster: LIVE + handle,
+            # diletakkan tengah bawah di dalam panel informasi.
+            '<g filter="url(#glow)"><circle '
+            f'cx="697" cy="{num(412 + MASTHEAD_SHIFT)}" r="4" fill="#B3272E">'
             '<animate attributeName="opacity" values="1;.3;1" dur="1.6s" repeatCount="indefinite"/>'
             '</circle></g>',
-            '<text x="927" y="111" fill="#FF4D5A" '
-            'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="12" '
+            f'<text x="709" y="{num(417 + MASTHEAD_SHIFT)}" fill="#B3272E" '
+            f'font-family="{MONO_UI}" font-size="14" '
             'font-weight="700">LIVE</text>',
-            f'<rect x="982" y="94" width="146" height="24" rx="12" fill="{t["chrome"]}" opacity=".16" '
+            f'<rect x="766" y="{num(400 + MASTHEAD_SHIFT)}" width="162" height="24" rx="12" fill="{t["chrome"]}" opacity=".16" '
             f'stroke="{t["chrome"]}"/>',
-            f'<text x="1055" y="111" text-anchor="middle" fill="{t["chrome"]}" '
-            'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="14" '
+            f'<text x="847" y="{num(417 + MASTHEAD_SHIFT)}" text-anchor="middle" fill="{t["chrome"]}" '
+            f'font-family="{MONO_UI}" font-size="14" '
             'font-weight="700">@willdannaltairr</text>',
-        ]
-    )
-
-    value_right = 1127.0
-    row_y = 153.0
-    for label, value in ROWS:
-        value_len = text_width(value, 14)
-        label_len = text_width(label, 14)
-        leader_start = 491 + label_len + 12
-        leader_end = value_right - value_len - 12
-        parts.extend(
-            [
-                f'<text x="491" y="{num(row_y)}" fill="{t["muted"]}" '
-                'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="14">'
-                f"{html.escape(label)}</text>",
-                f'<path d="{dotted_leader(leader_start, leader_end, row_y - 4)}" '
-                f'fill="none" stroke="{t["line"]}" stroke-width="1" shape-rendering="crispEdges"/>',
-                f'<text x="{num(value_right)}" y="{num(row_y)}" text-anchor="end" '
-                f'fill="{t["text"]}" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" '
-                f'font-size="14" textLength="{num(value_len)}" lengthAdjust="spacingAndGlyphs">'
-                f"{html.escape(value)}</text>",
-            ]
-        )
-        row_y += 23
-
-    parts.extend(
-        [
-            f'<path d="M490 530H1130" stroke="{t["line"]}"/>',
-            f'<text x="491" y="548" fill="{t["accent"]}" '
-            'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11">'
-            "● ALL SYSTEMS NOMINAL</text>",
-            f'<text x="1128" y="548" text-anchor="end" fill="{t["muted"]}" '
-            'font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="11">'
-             "WIB · ID NODE</text>",
+            bio_css,
+            bio_markup,
+            # Pita bawah ala "IF SEEN ..." + bar "CODING · AI · WEB".
+            # Kartu ditinggikan 8px (H 770→778) dengan offset pita ikut
+            # naik supaya bar paling bawah punya gap jelas dari tepi kartu
+            # dan tidak menempel.
+            f'<rect x="35" y="{H - 70}" width="1111" height="24" rx="3" fill="none" '
+            f'stroke="{t["line"]}" stroke-width="1.5"/>',
+            f'<text x="60" y="{H - 53}" text-anchor="middle" fill="{t["chrome"]}" '
+            f'font-family="{MASTHEAD_SERIF}" font-size="13">\u2605</text>',
+            f'<text x="590" y="{H - 53}" text-anchor="middle" fill="{t["chrome"]}" '
+            f'font-family="{MASTHEAD_SERIF}" font-size="13" font-weight="700" '
+            'letter-spacing="1.5">IF SEEN \u2014 VISIT GITHUB @willdannaltairr \u00b7 ALWAYS SHIPS</text>',
+            f'<text x="1120" y="{H - 53}" text-anchor="middle" fill="{t["chrome"]}" '
+            f'font-family="{MASTHEAD_SERIF}" font-size="13">\u2605</text>',
+            f'<rect x="35" y="{H - 44}" width="1111" height="24" rx="3" fill="{t["chrome"]}" />',
+            f'<text x="590" y="{H - 27}" text-anchor="middle" fill="{t["panel"]}" '
+            f'font-family="{MASTHEAD_SERIF}" font-size="15" font-weight="900" '
+            'letter-spacing="4">\u2605 CODING \u00b7 AI \u00b7 WEB \u2605</text>',
             "</svg>",
         ]
     )
@@ -453,33 +938,35 @@ def render_svg(
 def main() -> None:
     if not SOURCE.exists():
         raise SystemExit(f"Missing source portrait: {SOURCE}")
+    if not PROFILE.exists():
+        raise SystemExit(f"Missing profile data: {PROFILE}")
     ASSETS.mkdir(parents=True, exist_ok=True)
     DATA.mkdir(parents=True, exist_ok=True)
     logos = make_logos()
 
-    # Cache theme-specific dither points as reproducible source data.
-    portraits: dict[str, np.ndarray] = {}
-    for index, theme in enumerate(THEMES):
-        rng = np.random.default_rng(SEED + index)
-        points = portrait_points(theme, rng)
-        portraits[theme] = points
+    # Titik foto: satu set identik untuk kedua tema (pipeline blue-noise).
+    points = portrait_points()
+    for theme in THEMES:
         np.save(DATA / f"portrait-{theme}.npy", points)
+
+    # Layer titik padat per logo (dipakai layer statis + sumber partikel).
+    dense = {name: logo_dots(image) for name, image in logos.items()}
 
     for index, theme in enumerate(THEMES):
         rng = np.random.default_rng(SEED + 100 + index)
         sampled = {
-            name: sample_logo_points(image, rng, TRAVELLER_COUNT)
-            for name, image in logos.items()
+            name: sample_logo_points(dots, rng, TRAVELLER_COUNT)
+            for name, dots in dense.items()
         }
-        for name, points in sampled.items():
-            np.save(DATA / f"{name}-{theme}.npy", points)
-        svg = render_svg(theme, portraits[theme], sampled, rng)
+        for name, pts in sampled.items():
+            np.save(DATA / f"{name}-{theme}.npy", pts)
+        svg = render_svg(theme, points, sampled, dense, rng)
         output = ASSETS / f"banner-{theme}.v9.svg"
         output.write_text(svg, encoding="utf-8")
         byte_size = output.stat().st_size
         print(
             f"{output.relative_to(ROOT)}: {byte_size:,} bytes "
-            f"({byte_size / 1024:.1f} KiB), {len(portraits[theme]):,} portrait dots, "
+            f"({byte_size / 1024:.1f} KiB), {len(points):,} portrait dots, "
             f"{TRAVELLER_COUNT} travellers"
         )
 
