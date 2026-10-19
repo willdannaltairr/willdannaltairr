@@ -26,21 +26,6 @@
 
 ---
 
-
-## This is me :)
-
-Hi, I'm **Wildan**, pelajar SMK (16 tahun) dari Indonesia 🇮🇩.
-Fokusku **Coding · AI · Web**, dan lagi serius menata jalan menuju
-**Programmer Muda** — belajar mandiri, bangun proyek, dan biasakan shipping.
-
-- 🎯 **Target:** Programmer Muda — kuat di **Python · JavaScript · HTML/CSS**
-- 🛠️ **ToolChain:** VS Code · Git · GitHub · Vercel
-- 🌱 **Belajar mandiri:** SMA · dokumentasi, tutorial, dan proyek nyata
-- 🤖 **Minat:** AI dan Web — dari CRUD sampai Blog App + backend
-- 🚀 **Repo andalan:** `Blog-App`, `Blog-App-Backend`, `CRUD-DATA-SISWA`, `E-commerce-Altaire-Noire`
-- 💬 Ajak aku ngobrol soal **belajar coding dari nol** — aku jawab sebisaku.
-<br>
-
 <div align="center">
 
 <!-- The biodata above, as code: a terminal window that types itself, character
@@ -62,9 +47,6 @@ Fokusku **Coding · AI · Web**, dan lagi serius menata jalan menuju
 <img src="https://skillicons.dev/icons?i=py,js,ts,html,css,react,nextjs,nodejs,tailwind,dart,flutter,git,github,vscode&perline=7" alt="tech stack">
 
 <br>
-
-<!-- DevQuest monster-stack card: live tech-stack card, glass style -->
-<img src="https://devquest-mu.vercel.app/card/willdannaltairr.svg?template=monster-stack&style=glass&accent=ffffff" alt="@willdannaltairr's DevQuest Monster Stack" width="100%">
 
 </div>
 
