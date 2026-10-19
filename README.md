@@ -40,21 +40,23 @@
 <table>
 <tr>
 <td width="50%" align="center" valign="middle">
-<!-- Self-rated radar - edit assets/skills.json, the workflow redraws it -->
+<!-- Self-rated skills, drawn as an orb web with a spider on the hub.
+     Edit assets/skills.json and the Charts workflow respins the silk. -->
 <picture>
   <source media="(prefers-color-scheme: dark)"  srcset="assets/radar-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/radar-light.svg">
-  <img src="assets/radar-dark.svg" width="400" alt="skill radar chart">
+  <img src="assets/radar-dark.svg" width="400" alt="Skill web: seven spokes labelled Python, JavaScript, HTML / CSS, React / Next.js, Tailwind, Git / GitHub and Problem Solving, with a spider on the hub and a thread reaching to each skill's score.">
 </picture>
 
 </td>
 <td width="50%" align="center" valign="middle">
 
-<!-- Hand-authored contract & language stack radar - edit assets/langmix.json -->
+<!-- Hand-authored contract & language stack, same orb-web treatment.
+     Edit assets/langmix.json and the Charts workflow respins the silk. -->
 <picture>
   <source media="(prefers-color-scheme: dark)"  srcset="assets/radar-langs-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="assets/radar-langs-light.svg">
-  <img src="assets/radar-langs-dark.svg" width="400" alt="language radar chart">
+  <img src="assets/radar-langs-dark.svg" width="400" alt="Language web: six spokes labelled Python, JavaScript, TypeScript, HTML, CSS and Dart, drawn on parchment with a spider resting at the centre.">
 </picture>
 
 </td>
