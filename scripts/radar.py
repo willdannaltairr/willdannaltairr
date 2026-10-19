@@ -2,6 +2,10 @@
 """
 radar.py - render a spider / radar chart as a standalone SVG. Stdlib only.
 
+The chart is drawn as an orb web: radial spokes with concentric threads that
+sag toward the centre, and a spider resting on the hub. Colours follow the
+parchment-and-ink palette of the profile banner, so the two read as one set.
+
 Two sources of data:
 
   1. a JSON file you control (default)
@@ -31,28 +35,34 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+# Parchment and ink, lifted straight from the banner (scripts/banner/
+# generate.py) so the webs sit on the same paper as the WANTED poster.
 THEMES = {
     "dark": {
-        "grid": "#30363d",
-        "spoke": "#21262d",
-        "label": "#c9d1d9",
-        "value": "#8b949e",
-        "title": "#e6edf3",
-        "fill": "#aa9bef",
-        "stroke": "#3fb950",
-        "vertex": "#7ee787",
-        "bg": "none",
+        "bg": "#e5d7b8",
+        "paper": "#ede1c4",
+        "line": "#4a3a26",
+        "grid": "#4a3a26",
+        "spoke": "#6b5a40",
+        "label": "#2b2117",
+        "value": "#6b5a40",
+        "title": "#2b2117",
+        "fill": "#6b5a40",
+        "stroke": "#2b2117",
+        "ink": "#2b2117",
     },
     "light": {
-        "grid": "#d0d7de",
-        "spoke": "#e6eaef",
-        "label": "#1f2328",
-        "value": "#57606a",
-        "title": "#1f2328",
-        "fill": "#2da44e",
-        "stroke": "#1a7f37",
-        "vertex": "#116329",
-        "bg": "none",
+        "bg": "#f4eacc",
+        "paper": "#faf1dc",
+        "line": "#5b4a32",
+        "grid": "#5b4a32",
+        "spoke": "#77644a",
+        "label": "#2b2117",
+        "value": "#77644a",
+        "title": "#2b2117",
+        "fill": "#77644a",
+        "stroke": "#2b2117",
+        "ink": "#2b2117",
     },
 }
 
@@ -124,6 +134,7 @@ def from_github(user: str, token: str | None, limit: int, exclude: set[str],
 
 
 FONT = "ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif"
+SERIF = "Georgia,'Times New Roman','Nimbus Roman',serif"  # matches the banner masthead
 LBL, VAL, TTL = 13, 11, 15  # font sizes: axis label, axis value, title
 
 
@@ -140,6 +151,66 @@ def text_width(s, font_size):
     """Rough advance width for a humanist sans. Deliberately generous —
     it only feeds the bounding box, so over-estimating just adds padding."""
     return len(s) * font_size * 0.62
+
+
+def web(n: int, r: float, rings: int, sag: float = 0.14):
+    """Concentric threads that bow toward the centre, the way an orb web does.
+
+    A straight n-gon reads as a chart grid. Pulling each segment's midpoint
+    toward the hub turns the same geometry into silk: the threads visibly sag
+    between the spokes instead of cutting a hard corner. Yields (k, path).
+    """
+    out = []
+    for k in range(1, rings + 1):
+        pts = ring(r * k / rings, n)
+        d = []
+        for i in range(n):
+            x1, y1 = pts[i]
+            x2, y2 = pts[(i + 1) % n]
+            mx = (x1 + x2) / 2 * (1 - sag)
+            my = (y1 + y2) / 2 * (1 - sag)
+            d.append(f"M{x1:.1f} {y1:.1f}Q{mx:.1f} {my:.1f} {x2:.1f} {y2:.1f}")
+        out.append((k, "".join(d)))
+    return out
+
+
+def spider(c, scale: float = 0.9) -> str:
+    """A spider resting on the hub: eight jointed legs behind body and head.
+
+    Drawn last so the measured shape never hides it, and scaled from the
+    chart size so it keeps the same weight at any --size.
+    """
+    ink, paper = c["ink"], c["paper"]
+    legs = []
+    for side in (-1, 1):
+        for (x0, y0), (cx, cy), (x1, y1) in (
+            ((5.5, -9.0), (16.0, -19.0), (27.0, -24.0)),
+            ((6.5, -5.0), (19.5, -9.5), (32.0, -7.5)),
+            ((6.5, 0.0), (20.0, 3.5), (31.0, 11.0)),
+            ((5.5, 5.0), (16.0, 14.0), (25.0, 24.0)),
+        ):
+            d = (f"M{side * x0:.1f} {y0:.1f}"
+                 f"Q{side * cx:.1f} {cy:.1f} {side * x1:.1f} {y1:.1f}")
+            legs.append(
+                f'<path d="{d}" fill="none" stroke="{ink}" '
+                f'stroke-width="2.4" stroke-linecap="round"/>'
+            )
+    body = (
+        # abdomen, cephalothorax, and two eyes catching the parchment
+        f'<ellipse cx="0" cy="5.5" rx="10.5" ry="13.5" fill="{ink}"/>'
+        f'<ellipse cx="0" cy="-7.5" rx="7.6" ry="7" fill="{ink}"/>'
+        f'<circle cx="-3.2" cy="-9.2" r="1.5" fill="{paper}"/>'
+        f'<circle cx="3.2" cy="-9.2" r="1.5" fill="{paper}"/>'
+    )
+    # A slow bob: enough to feel alive inside a GitHub <img>, small enough
+    # that it never reads as the chart itself moving.
+    bob = (
+        '<animateTransform attributeName="transform" type="translate" '
+        'values="0 -2.2;0 2.2;0 -2.2" dur="5.5s" repeatCount="indefinite" '
+        'calcMode="spline" keyTimes="0;0.5;1" '
+        'keySplines="0.42 0 0.58 1;0.42 0 0.58 1"/>'
+    )
+    return f'<g>{bob}<g transform="scale({scale:.2f})">{"".join(legs)}{body}</g></g>'
 
 
 def render(title, axes, theme: str, size: int, rings: int, show_values: bool,
@@ -179,16 +250,17 @@ def render(title, axes, theme: str, size: int, rings: int, show_values: bool,
         minx, maxx = min(minx, x0), max(maxx, x1)
         miny, maxy = min(miny, y0), max(maxy, y1)
 
-    pad = 10
-    title_h = TTL + 14 if title else 0
+    pad = 18
+    title_h = TTL + 18 if title else 0
     W = round((maxx - minx) + 2 * pad)
     H = round((maxy - miny) + 2 * pad + title_h)
     ox, oy = -minx + pad, -miny + pad + title_h
 
     # A long title ("<user> · language mix") can be wider than the chart itself.
     # Widen the canvas and re-centre the chart inside it rather than clipping.
+    # Upper-cased because the plate is set like the banner masthead.
     if title:
-        need = round(text_width(title, TTL) + 2 * pad)
+        need = round(text_width(title.upper(), TTL) * 1.1 + 2 * pad)
         if need > W:
             ox += (need - W) / 2
             W = need
@@ -196,35 +268,41 @@ def render(title, axes, theme: str, size: int, rings: int, show_values: bool,
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
         f'width="{W}" height="{H}" role="img" '
-        f'aria-label="{esc(title) or "radar chart"}" font-family="{FONT}">'
+        f'aria-label="{esc(title) or "radar chart"}" font-family="{FONT}">',
+        # Parchment sheet, then the same double rule the poster uses.
+        f'<rect width="{W}" height="{H}" rx="12" fill="{c["bg"]}"/>',
+        f'<rect x="6.5" y="6.5" width="{W - 13}" height="{H - 13}" rx="9" '
+        f'fill="{c["paper"]}" stroke="{c["line"]}" stroke-width="1.4"/>',
+        f'<rect x="12" y="12" width="{W - 24}" height="{H - 24}" rx="7" '
+        f'fill="none" stroke="{c["line"]}" stroke-width="0.7" opacity=".5"/>',
     ]
-    if c["bg"] != "none":
-        parts.append(f'<rect width="100%" height="100%" fill="{c["bg"]}"/>')
     if title:
         parts.append(
-            f'<text x="{W / 2:.1f}" y="{pad + TTL:.0f}" text-anchor="middle" '
-            f'font-size="{TTL}" font-weight="700" fill="{c["title"]}">'
-            f'{esc(title)}</text>'
+            f'<text x="{W / 2:.1f}" y="{pad + TTL - 3:.0f}" text-anchor="middle" '
+            f'font-family="{SERIF}" font-size="{TTL}" font-weight="700" '
+            f'letter-spacing="1.8" fill="{c["title"]}">'
+            f'{esc(title.upper())}</text>'
         )
     parts.append(f'<g transform="translate({ox:.1f},{oy:.1f})">')
 
-    # concentric rings, faintest in the middle
-    for k in range(rings, 0, -1):
-        d = " ".join(f"{x:.1f},{y:.1f}" for x, y in ring(r * k / rings, n))
-        parts.append(
-            f'<polygon points="{d}" fill="none" stroke="{c["grid"]}" '
-            f'stroke-width="1" opacity="{0.35 + 0.5 * k / rings:.2f}"/>'
-        )
-
-    # spokes
+    # Spokes first: the silk lines the rest of the web is spun onto.
     for x, y in outer:
         parts.append(
             f'<line x1="0" y1="0" x2="{x:.1f}" y2="{y:.1f}" '
-            f'stroke="{c["spoke"]}" stroke-width="1"/>'
+            f'stroke="{c["spoke"]}" stroke-width="1" opacity=".9"/>'
         )
 
-    # the data shape. SMIL rather than CSS: animateTransform scales about the
-    # group's own origin, which is already the centre of the chart here.
+    # Concentric threads, sagging between the spokes. The outermost is drawn
+    # heaviest, which is how a real web anchors itself to its frame.
+    for k, d in web(n, r, rings):
+        parts.append(
+            f'<path d="{d}" fill="none" stroke="{c["grid"]}" '
+            f'stroke-width="{1.0 + 0.3 * k / rings:.2f}" '
+            f'opacity="{0.4 + 0.45 * k / rings:.2f}" stroke-linecap="round"/>'
+        )
+
+    # The measured shape. SMIL rather than CSS: animateTransform scales about
+    # the group's own origin, which is already the centre of the chart here.
     shape = [(px * v / 100, py * v / 100) for (px, py), v in zip(outer, vals)]
     d = " ".join(f"{x:.1f},{y:.1f}" for x, y in shape)
     parts.append("<g>")
@@ -235,15 +313,18 @@ def render(title, axes, theme: str, size: int, rings: int, show_values: bool,
             'keySplines="0.22 1 0.36 1" fill="freeze"/>'
         )
     parts.append(
-        f'<polygon points="{d}" fill="{c["fill"]}" fill-opacity="0.22" '
-        f'stroke="{c["stroke"]}" stroke-width="2.5" stroke-linejoin="round"/>'
+        f'<polygon points="{d}" fill="{c["fill"]}" fill-opacity="0.20" '
+        f'stroke="{c["stroke"]}" stroke-width="2.4" stroke-linejoin="round"/>'
     )
     for x, y in shape:
         parts.append(
-            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.6" fill="{c["vertex"]}" '
-            f'stroke="{c["stroke"]}" stroke-width="1.2"/>'
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.4" fill="{c["paper"]}" '
+            f'stroke="{c["stroke"]}" stroke-width="1.6"/>'
         )
     parts.append("</g>")
+
+    # The spider sits on the hub, drawn last so no shape can cover it.
+    parts.append(spider(c, scale=size / 440 * 0.9))
 
     # axis labels
     for lx, ly, anchor, label, v in labels:
