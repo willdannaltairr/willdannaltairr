@@ -130,19 +130,19 @@ THEMES = {"dark": dict(_PALETTE), "light": dict(_PALETTE)}
 
 # BIO panel sekarang plain-text satu tinta (gaya ketikan koran),
 # bukan syntax-color code. Kuncinya satu warna tinta untuk semua peran.
+# Kartu biodata di dalam poster juga satu palet untuk dua tema, sama
+# seperti kertasnya. Dua tema memakai palet identik, jadi teks, caret, dan
+# kotak-kotaknya tidak boleh berbeda warna sedikit pun.
+BANNER_CARD_PALETTE = {
+    "kw": "#2b2117", "cls": "#2b2117", "str": "#2b2117",
+    "fn": "#2b2117", "key": "#2b2117", "pn": "#2b2117",
+    "brk": "#2b2117", "num": "#2b2117", "cmt": "#77644a",
+    "caret": "#7a1f1f",
+}
+
 BANNER_CARD_THEMES = {
-    "dark": {
-        "kw": "#2b2117", "cls": "#2b2117", "str": "#2b2117",
-        "fn": "#2b2117", "key": "#2b2117", "pn": "#2b2117",
-        "brk": "#2b2117", "num": "#2b2117", "cmt": "#6b5a40",
-        "caret": "#7a1f1f",
-    },
-    "light": {
-        "kw": "#2b2117", "cls": "#2b2117", "str": "#2b2117",
-        "fn": "#2b2117", "key": "#2b2117", "pn": "#2b2117",
-        "brk": "#2b2117", "num": "#2b2117", "cmt": "#77644a",
-        "caret": "#7a1f1f",
-    },
+    "dark": dict(BANNER_CARD_PALETTE),
+    "light": dict(BANNER_CARD_PALETTE),
 }
 
 
@@ -1114,8 +1114,12 @@ def main() -> None:
     # Layer titik padat per logo (dipakai layer statis + sumber partikel).
     dense = {name: logo_dots(image) for name, image in logos.items()}
 
-    for index, theme in enumerate(THEMES):
-        rng = np.random.default_rng(SEED + 100 + index)
+    # Seed yang sama untuk kedua tema. Dulu tiap tema memakai seed
+    # berbeda, jadi dua file Although Sama paletnya tetap bergambar dengan
+    # susunan titik acak yang berbeda — itulah sisa 150 byte dan sisa
+    # selisih piksel. Satu seed membuat keduanya benar-benar sama.
+    for theme in THEMES:
+        rng = np.random.default_rng(SEED + 100)
         sampled = {
             name: sample_logo_points(dots, rng, TRAVELLER_COUNT)
             for name, dots in dense.items()
