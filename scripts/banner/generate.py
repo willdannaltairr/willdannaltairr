@@ -44,7 +44,7 @@ PHASE_SECONDS = 3.4
 MORPH_SECONDS = 1.7
 MORPH_BLOOM = 12.0
 
-W, H = 1180, 778
+W, H = 1180, 786
 # Poster masthead (ala koran WANTED) mendorong panel ke bawah agar muat
 # headline besar + papan nama. Semua koordinat animasi ikut digeser.
 MASTHEAD_SHIFT = 140.0
@@ -115,8 +115,16 @@ THEMES = {
         "chrome": "#2b1e10",
         "accent": "#7a1f1f",
         "shadow": "#b09060",
+        # Warna bintang sheriff: emas pucat, kontras dengan tinta coklat.
+        "star": "#E9C173",
     },
 }
+
+# Tema "dark" memakai kertas yang sama persis dengan "light": satu lembar
+# krem, bukan dua suasana berbeda. GitHub tetap memilih berkas lewat
+# prefers-color-scheme, tapi hasilnya identik supaya poster terbaca sama di
+# mode terang maupun gelap.
+THEMES["dark"].update(THEMES["light"])
 
 # BIO panel sekarang plain-text satu tinta (gaya ketikan koran),
 # bukan syntax-color code. Kuncinya satu warna tinta untuk semua peran.
@@ -435,8 +443,148 @@ def transport(source: np.ndarray, target: np.ndarray) -> np.ndarray:
     return ordered
 
 
+def curved_text(text: str, cx: float, cy: float, r: float, start_deg: float,
+                end_deg: float, size: float, fill: str, weight: int = 900,
+                family: str = MASTHEAD_SERIF, flip: bool = False) -> str:
+    """Teks yang mengikuti busur lingkaran, huruf per huruf.
+
+    Dipakai untuk tulisan melengkung di badge. Tiap huruf ditempatkan di
+    titik busur lalu diputar agar berdiri tegak terhadap jari-jari — persis
+    cara teks pada lencana logam dicetak.
+
+    Sudut memakai konvensi SVG (y ke bawah): 0 = kanan, -90 = atas,
+    90 = bawah. Busur atas ditulis dari -135 ke -45, busur bawah dari 135
+    ke 45. Huruf yang dilewati (spasi, tanda baca) tetap dihitung dalam
+    penempatan, tapi jaraknya tetap dibagi rata di antara huruf yang
+    benar-benar digambar — kalau tidak, teksnya jadi renggang di satu sisi.
+    """
+    chars = [c for c in text if c != " "]
+    n = max(1, len(chars) - 1)
+    out = []
+    for i, ch in enumerate(chars):
+        deg = start_deg + (end_deg - start_deg) * (i / n)
+        a = math.radians(deg)
+        x = cx + r * math.cos(a)
+        y = cy + r * math.sin(a)
+        rot = deg + 90 + (180 if flip else 0)
+        out.append(
+            f'<text x="{x:.2f}" y="{y:.2f}" text-anchor="middle" '
+            f'font-family="{family}" font-size="{size:.1f}" font-weight="{weight}" '
+            f'fill="{fill}" letter-spacing="1.2" '
+            f'transform="rotate({rot:.2f} {x:.2f} {y:.2f})">{esc(ch)}</text>'
+        )
+    return "".join(out)
+
+
+def sheriff_badge(cx: float, cy: float, r: float, theme: dict) -> str:
+    """Lencana sheriff: piringan emas, bintang lima, seal navy di tengah.
+
+    Mengikuti referensi Maplewood Sheriff: badan emas bulat dengan garis
+    navy, bintang lima runcing yang ujungnya sampai ke tepi piringan, seal
+    bulat navy bertulis "SHERIFF / OREGON" di pusat, dan tulisan melengkung
+    biru di busur atas dan bawah ("SHERIFF'S" / "DEPARTMENT").
+
+    Emas memakai dua nada: bidangnya #F5CF5B, garisnya #8A6410, dan
+    outline navy #1A2A4A — persis warna lencana logam sungguhan.
+    """
+    gold, gold_dark = "#F5CF5B", "#8A6410"
+    navy, cream = "#1A2A4A", "#F5E9C8"
+    # --- piringan emas ---------------------------------------------------
+    plate = (
+        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{gold}" '
+        f'stroke="{navy}" stroke-width="2.4"/>'
+        f'<circle cx="{cx}" cy="{cy}" r="{r * 0.93:.2f}" fill="none" '
+        f'stroke="{navy}" stroke-width="1.1" opacity=".55"/>'
+    )
+    # --- bintang lima: ujung di radius penuh, lekuk dalam ---------------
+    pts = []
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        rr = r * (0.97 if i % 2 == 0 else 0.46)
+        pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    star = (f"M{pts[0][0]:.2f} {pts[0][1]:.2f}"
+            + "".join(f"L{p[0]:.2f} {p[1]:.2f}" for p in pts[1:]) + "Z")
+    # Bintang memakai emas yang lebih gelap supaya bentuknya terlihat di
+    # atas piringan emas — kalau sama, konturnya hilang.
+    # Goresan ukiran dari pusat ke tiap ujung bintang. Hanya digambar dari
+    # radius 0.36 ke luar, jadi tidak menembus seal di tengah.
+    veins = "".join(
+        f'<line x1="{cx + (p[0] - cx) * 0.36:.1f}" '
+        f'y1="{cy + (p[1] - cy) * 0.36:.1f}" '
+        f'x2="{p[0]:.1f}" y2="{p[1]:.1f}" '
+        f'stroke="{navy}" stroke-width="0.9" opacity=".5"/>'
+        for p in pts[::2]
+    )
+    star_mark = (
+        f'<path d="{star}" fill="#E8BC44" stroke="{navy}" '
+        f'stroke-width="1.8" stroke-linejoin="round"/>'
+        + veins
+    )
+    # --- seal navy di tengah --------------------------------------------
+    # Isinya bintang emas kecil, bukan teks melengkung: pada diameter segini
+    # teks melengkung di dalam seal saling tumpang tindih dan tak terbaca.
+    mini = []
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        rr = r * 0.155 * (1.0 if i % 2 == 0 else 0.44)
+        mini.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    mini_d = (f"M{mini[0][0]:.2f} {mini[0][1]:.2f}"
+              + "".join(f"L{p[0]:.2f} {p[1]:.2f}" for p in mini[1:]) + "Z")
+    medal = (
+        f'<circle cx="{cx}" cy="{cy}" r="{r * 0.26:.2f}" fill="{navy}" '
+        f'stroke="{gold}" stroke-width="1.8"/>'
+        f'<path d="{mini_d}" fill="{gold}"/>'
+    )
+    # --- tulisan melengkung ---------------------------------------------
+    # Busur atas: -140..-40 (pusat di -90 = atas). Busur bawah: 140..40
+    # (pusat di 90 = bawah), dibalik supaya terbaca dari kiri ke kanan.
+    texts = (
+        curved_text("SHERIFF'S", cx, cy, r * 0.78, -140, -40, r * 0.15, navy)
+        + curved_text("DEPARTMENT", cx, cy, r * 0.78, 140, 40, r * 0.15, navy,
+                      flip=True)
+    )
+    return plate + star_mark + medal + texts
+
+
 def num(value: float) -> str:
     return f"{value:.1f}".rstrip("0").rstrip(".")
+
+
+def sheriff_star(cx: float, cy: float, r: float, fill: str, stroke: str,
+                 inner: str) -> str:
+    """Bintang sheriff lima sudut, seperti lencana di referensi.
+
+    Bintang lima runcing (ujungnya menjulang, lekuknya dalam) dengan garis
+    goresan dari pusat ke tiap ujung — itulah yang bikin terbaca sebagai
+    bintang logam, bukan sekadar segi lima. Ditambah cincin kecil di pusat
+    dan tiga titik emas, miniatur dari lencana besar.
+    """
+    pts = []
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        rr = r * (1.0 if i % 2 == 0 else 0.44)
+        pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    d = f"M{pts[0][0]:.1f} {pts[0][1]:.1f}" + "".join(
+        f"L{p[0]:.1f} {p[1]:.1f}" for p in pts[1:]
+    ) + "Z"
+    veins = "".join(
+        f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{p[0]:.1f}" y2="{p[1]:.1f}" '
+        f'stroke="{stroke}" stroke-width="0.8" opacity=".4"/>'
+        for p in pts[::2]
+    )
+    dots = "".join(
+        f'<circle cx="{cx + dx:.1f}" cy="{cy + dy:.1f}" r="{r * 0.075:.2f}" '
+        f'fill="{inner}"/>'
+        for dx, dy in ((-r * 0.26, 0), (0, 0), (r * 0.26, 0))
+    )
+    return (
+        f'<path d="{d}" fill="{fill}" stroke="{stroke}" stroke-width="1.4" '
+        f'stroke-linejoin="round"/>'
+        + veins
+        + f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r * 0.26:.2f}" fill="none" '
+        f'stroke="{stroke}" stroke-width="0.8" opacity=".7"/>'
+        + dots
+    )
 
 
 def point_path(points: np.ndarray, step: float = 1.0) -> str:
@@ -859,9 +1007,21 @@ def render_svg(
         'font-weight="900" letter-spacing="1.2">MYSELF</text>',
         f'<text x="438" y="{num(111 + MASTHEAD_SHIFT)}" text-anchor="end" fill="{t["muted"]}" '
         f'font-family="{MONO_UI}" font-size="12">MUGSHOT \u00b7 370\u00d7380 / 1-BIT</text>',
-        # Garis tinggi mugshot di belakang titik-titik: dulu digambar tipis
-        # (opacity .22), tapi garis bening itu memotong potret dan terbaca
-        # sebagai noise. Bingkai kiri sekarang bersih.
+        # Garis tinggi mugshot di belakang titik-titik, seperti penggaris
+        # tinggi badan di poster buronan: garis tipis + bintang sheriff
+        # sebagai penanda tiap tingkat (dulu angka 5..0). Enam tingkat saja,
+        # berhenti di dalam bingkai — sempat ada bintang yang jatuh di luar
+        # kertas karena rentangnya kelebihan satu baris.
+        f'<g stroke="{t["line"]}" opacity=".24">'
+        + "".join(
+            f'<path d="M49 {num(y)}H439" stroke-width="1"/>'
+            for y in range(int(300 + MASTHEAD_SHIFT), int(552 + MASTHEAD_SHIFT), 42)
+        )
+        + "</g>"
+        + "".join(
+            sheriff_star(66, y - 1, 17.5, t["star"], t["line"], t["line"])
+            for y in range(int(300 + MASTHEAD_SHIFT), int(552 + MASTHEAD_SHIFT), 42)
+        ),
         f'<path d="M49 {num(141 + MASTHEAD_SHIFT)}h12M49 {num(141 + MASTHEAD_SHIFT)}v12'
         f'M439 {num(141 + MASTHEAD_SHIFT)}h-12M439 {num(141 + MASTHEAD_SHIFT)}v12'
         f'M49 {num(539 + MASTHEAD_SHIFT)}h12M49 {num(539 + MASTHEAD_SHIFT)}v-12'
@@ -990,20 +1150,21 @@ def render_svg(
             bio_css,
             bio_markup,
             # Pita bawah ala "IF SEEN ..." + bar "CODING · AI · WEB".
-            # Kartu ditinggikan 8px (H 770→778) dengan offset pita ikut
-            # naik supaya bar paling bawah punya gap jelas dari tepi kartu
-            # dan tidak menempel.
-            f'<rect x="35" y="{H - 70}" width="1111" height="24" rx="3" fill="none" '
+            # Kartu ditinggikan 8px (H 778→786) dan pita digeser 8px naik,
+            # jadi posisi absolutnya tetap sama tapi kini ada jarak 15px
+            # antara bar coklat dan tepi bawah kertas — sebelumnya cuma 7px
+            # dan terlihat menempel.
+            f'<rect x="35" y="{H - 78}" width="1111" height="24" rx="3" fill="none" '
             f'stroke="{t["line"]}" stroke-width="1.5"/>',
-            f'<text x="60" y="{H - 53}" text-anchor="middle" fill="{t["chrome"]}" '
+            f'<text x="60" y="{H - 61}" text-anchor="middle" fill="{t["chrome"]}" '
             f'font-family="{MASTHEAD_SERIF}" font-size="13">\u2605</text>',
-            f'<text x="590" y="{H - 53}" text-anchor="middle" fill="{t["chrome"]}" '
+            f'<text x="590" y="{H - 61}" text-anchor="middle" fill="{t["chrome"]}" '
             f'font-family="{MASTHEAD_SERIF}" font-size="13" font-weight="700" '
             'letter-spacing="1.5">IF SEEN \u2014 VISIT GITHUB @willdannaltairr \u00b7 ALWAYS SHIPS</text>',
-            f'<text x="1120" y="{H - 53}" text-anchor="middle" fill="{t["chrome"]}" '
+            f'<text x="1120" y="{H - 61}" text-anchor="middle" fill="{t["chrome"]}" '
             f'font-family="{MASTHEAD_SERIF}" font-size="13">\u2605</text>',
-            f'<rect x="35" y="{H - 44}" width="1111" height="24" rx="3" fill="{t["chrome"]}" />',
-            f'<text x="590" y="{H - 27}" text-anchor="middle" fill="{t["panel"]}" '
+            f'<rect x="35" y="{H - 52}" width="1111" height="24" rx="3" fill="{t["chrome"]}" />',
+            f'<text x="590" y="{H - 35}" text-anchor="middle" fill="{t["panel"]}" '
             f'font-family="{MASTHEAD_SERIF}" font-size="15" font-weight="900" '
             'letter-spacing="4">\u2605 CODING \u00b7 AI \u00b7 WEB \u2605</text>',
             # Lapisan kertas terakhir: butiran halus, serat, bercak penuaan,
@@ -1019,6 +1180,14 @@ def render_svg(
             f'{H - 26}" filter="url(#stain)" opacity=".07"/>'
             f'<rect x="13" y="13" width="1154" height="{H - 26}" fill="url(#age)"/>'
             '</g>',
+            # Lencana sheriff paling akhir: menimpa titik-titik potret dan
+            # seluruh lapisan kertas, jadi terbaca seperti logam yang
+            # ditempel di atas poster. Diletakkan di pojok kanan bawah
+            # frame mugshot (yang membentang x 49..439, y 264..678) —
+            # di tengah-tengah menutupi wajah, di bawah keluar dari frame.
+            sheriff_badge(
+                384.0, 458.0 + MASTHEAD_SHIFT, 48.0, t
+            ),
             "</svg>",
         ]
     )
