@@ -65,6 +65,7 @@ TOP = 26          # first baseline, measured from the top of the window
 BOTTOM = 22       # padding under the last baseline
 ADV = 0.575       # monospace advance width, as a fraction of the font size
 MAX_COLS = 57     # wrap long lists at this many columns
+ENTRY = 0.45      # how long the window takes to land before typing starts
 
 
 def width_of(text: str, size: float = SIZE) -> float:
@@ -229,6 +230,10 @@ def render(code: list[str], filename: str, cls: str, label: str, theme: str,
            step: float, jitter: float, pause: float) -> str:
     c = THEMES[theme]
     delays = schedule(code, step, jitter, pause)
+    # The window lands first, then the typing starts. Without this the text
+    # appears while the box is still sliding in, so the box reads as lagging
+    # behind its own text.
+    delays = [[t + ENTRY for t in row] for row in delays]
     total = max((max(r) for r in delays if r), default=0.0)  # when the last glyph lands
     height = BAR + TOP + (len(code) - 1) * LH + BOTTOM
 
@@ -239,14 +244,12 @@ def render(code: list[str], filename: str, cls: str, label: str, theme: str,
         ".r{animation:tp 1ms linear both}",
         "@keyframes in{from{opacity:0;transform:translateY(6px)}"
         "to{opacity:1;transform:none}}",
-        ".win{animation:in .45s cubic-bezier(.2,.8,.3,1) both}",
-        # the caret sits invisible until the last glyph lands, then blinks. Two
-        # elements because a fill-mode on the blink would leak its visible first
-        # frame through the whole delay.
-        "@keyframes on{from{opacity:0}to{opacity:1}}",
-        f".caret-in{{animation:on 1ms linear {total + .3:.2f}s both}}",
+        f".win{{animation:in {ENTRY}s cubic-bezier(.2,.8,.3,1) both}}",
+        # The caret is a solid block while the text is still arriving and only
+        # starts blinking once the last glyph has landed. No fill-mode, so
+        # before the delay the caret simply sits there at full opacity.
         "@keyframes bl{0%,49%{opacity:1}50%,100%{opacity:0}}",
-        ".caret{animation:bl 1.1s steps(1,end) infinite}",
+        f".caret{{animation:bl 1.1s steps(1,end) {total:.2f}s infinite}}",
         # leading indentation is a run of spaces inside a tspan, which browsers
         # drop unless the text content is told to keep them
         ".code text{white-space:pre}",
@@ -279,7 +282,13 @@ def render(code: list[str], filename: str, cls: str, label: str, theme: str,
     # code, one tspan per character so it can arrive in reading order
     n = 0
     lines = []
-    for line, times in zip(code, delays):
+    # Caret track: where the block cursor sits after every character, and
+    # where it sits at the start of each line. The caret is stepped through
+    # these with SMIL, on the same clock as the glyph reveals, so it never
+    # lags behind the text it belongs to.
+    caret_x: list[tuple[float, float]] = []
+    caret_y: list[tuple[float, float]] = []
+    for i, (line, times) in enumerate(zip(code, delays)):
         if not line:
             lines.append("")
             continue
@@ -288,6 +297,7 @@ def render(code: list[str], filename: str, cls: str, label: str, theme: str,
         if lead:
             spans.append(f'<tspan class="r" fill="none" opacity="0">'
                          f'{" " * lead}</tspan>')
+        line_y = BAR + TOP + i * LH - SIZE + 3
         k = lead  # indentation is typed too, it just has nothing to draw
         for text, role in tokenize(line[lead:], cls):
             for ch in text:
@@ -297,7 +307,19 @@ def render(code: list[str], filename: str, cls: str, label: str, theme: str,
                 style = f' font-style="italic"' if role == "cmt" else ""
                 spans.append(f'<tspan class="r d{n}" fill="{c[role]}"{style}>{esc(ch)}</tspan>')
                 css.append(f".d{n}{{animation-delay:{t:.3f}s}}")
+                # The block sits just after the character that just landed.
+                caret_x.append((t, PAD_X + width_of(line[:k])))
+                if len(caret_y) == 0 or caret_y[-1][1] != line_y:
+                    caret_y.append((t, line_y))
         lines.append("".join(spans))
+
+    # SMIL with calcMode="discrete" requires the first keyTime to be exactly
+    # 0, otherwise the whole animation is treated as an error and silently
+    # ignored — the caret then sits at its initial x for the entire run.
+    # So each track gets a leading stop at t=0 holding the start position.
+    if caret_x:
+        caret_x.insert(0, (0.0, caret_x[0][1]))
+        caret_y.insert(0, (0.0, caret_y[0][1]))
 
     # textLength pins every line to the same advance the caret is placed with, so
     # the block lands on the last glyph whatever monospace the viewer has
@@ -310,15 +332,27 @@ def render(code: list[str], filename: str, cls: str, label: str, theme: str,
                         f'lengthAdjust="spacing">{spans}</text>')
     body.append("</g>")
 
-    # block caret, parked after the last character
-    last = len(code) - 1
-    while last > 0 and not code[last]:
-        last -= 1
-    cx = PAD_X + width_of(code[last]) + 1
-    cy = BAR + TOP + last * LH - SIZE + 3
-    body.append(f'<g class="caret-in"><rect class="caret" x="{cx:.1f}" y="{cy:.1f}" '
-                f'width="{SIZE * ADV:.1f}" height="{SIZE + 2}" rx="2.5" '
-                f'fill="{c["caret"]}"/></g>')
+    # Block caret that rides the typing head. Two discrete SMIL animations
+    # move it in x (one stop per character) and y (one stop per line), on
+    # the same clock as the glyph reveals, so the caret is never left
+    # behind at the end of the file while the text is still arriving.
+    if caret_x:
+        span = max(t for t, _ in caret_x) or 1.0
+        kt_x = ";".join(f"{t / span:.4f}" for t, _ in caret_x)
+        v_x = ";".join(f"{x:.1f}" for _, x in caret_x)
+        span_y = max(t for t, _ in caret_y) or 1.0
+        kt_y = ";".join(f"{t / span_y:.4f}" for t, _ in caret_y)
+        v_y = ";".join(f"{y:.1f}" for _, y in caret_y)
+        body.append(
+            f'<rect class="caret" x="{caret_x[0][1]:.1f}" y="{caret_y[0][1]:.1f}" '
+            f'width="{SIZE * ADV:.1f}" height="{SIZE + 2}" rx="2.5" '
+            f'fill="{c["caret"]}">'
+            f'<animate attributeName="x" begin="0s" dur="{span:.2f}s" '
+            f'calcMode="discrete" keyTimes="{kt_x}" values="{v_x}"/>'
+            f'<animate attributeName="y" begin="0s" dur="{span_y:.2f}s" '
+            f'calcMode="discrete" keyTimes="{kt_y}" values="{v_y}"/>'
+            f'</rect>'
+        )
     body.append("</g>")
 
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{height}" '
