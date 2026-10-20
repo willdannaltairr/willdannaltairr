@@ -33,9 +33,18 @@ LOGOS = Path(__file__).resolve().parent / "logos"
 DATA = Path(__file__).resolve().parent / "data"
 SOURCE_DIR = ROOT / "assets" / "source"
 
-# Urutan morphing: portrait -> tb -> rpl -> altair -> code -> stellar -> portrait.
-# Logo SVG code/stellar dipertahankan setelah altair; rust tidak dipakai.
-LOGO_ORDER = ["tb", "rpl", "altair", "code", "stellar"]
+# Urutan morphing: portrait -> tb -> rpl -> altair -> code -> stellar ->
+# sheriff -> portrait. Badge sheriff menutup rantai, jadi video kembali
+# ke foto setelah lencana.
+LOGO_ORDER = ["tb", "rpl", "altair", "code", "stellar", "sheriff"]
+# Tiap logo punya karakter geraknya sendiri: seberapa jauh partikel
+# mengembang saat morph (bloom), seberapa kecil layer titiknya mendarat
+# (skala), dan seberapa tebal tinta yang mekar saat bentuk itu mengunci
+# (lebar garis). Nilai berbeda-beda bikin tiap perpindahan punya
+# cirinya sendiri, bukan satu pola yang diulang.
+LOGO_BLOOM = (12.0, 14.0, 10.5, 13.0, 15.0, 11.5)
+LOGO_ARRIVE = (0.86, 0.90, 0.83, 0.88, 0.92, 0.85)
+LOGO_SETTLE = (2.4, 2.1, 2.7, 2.3, 2.0, 2.6)
 # Semua bentuk (foto + 5 logo) tampil sama lama: satu slot PHASE_SECONDS
 # dengan morph seragam MORPH_SECONDS, sisanya diam (hold). Morph dipecah
 # dua babak dengan titik tengah yang mengembang keluar (bloom) supaya
@@ -48,6 +57,11 @@ W, H = 1180, 786
 # Poster masthead (ala koran WANTED) mendorong panel ke bawah agar muat
 # headline besar + papan nama. Semua koordinat animasi ikut digeser.
 MASTHEAD_SHIFT = 140.0
+# Pusat logo di frame visual map. Semua logo diletakkan di bidang 350x350
+# yang berpusat di titik ini, jadi skala animasi harus terhadap titik
+# tersebut supaya bentuknya melayang masuk, bukan menjauh dari asal.
+LOGO_CX = 69.0 + 200.0 * 0.875
+LOGO_CY = 154.0 + MASTHEAD_SHIFT + 200.0 * 0.875
 INTRO_SECONDS = 3.2
 # 2000 partikel terbang + layer titik padat per logo (kisi 2px, cap 55%)
 # supaya siluet tb/rpl/altair/code/stellar tampil padat dan jelas.
@@ -87,42 +101,32 @@ WANTED_SLAB = "Impact,Haettenschweiler,'Arial Narrow Bold','Franklin Gothic Heav
 TYPEWRITER = "'Courier New',Courier,'Nimbus Mono PS',monospace"
 MONO_UI = "ui-monospace,SFMono-Regular,Consolas,monospace"
 
-THEMES = {
-    "dark": {
-        "bg": "#DFB184",
-        # Lembar kertas tua: terang di tengah, makin amber ke tepi. Empat
-        # stop ini yang dipakai gradien paperWash, jadi bukan warna rata.
-        "wash": ("#FFFCF3", "#FBF0DC", "#F7E4C6", "#EDCB9C"),
-        "panel": "#FBF2DF",
-        "panel2": "#F6E9D1",
-        "line": "#3f3225",
-        "muted": "#6b5233",
-        "text": "#2b1e10",
-        "portrait": "#000000",
-        "chrome": "#2b1e10",
-        "accent": "#7a1f1f",
-        "shadow": "#a08050",
-    },
-    "light": {
-        "bg": "#E8BF93",
-        "wash": ("#FFFEFA", "#FCF5E7", "#F9EBD4", "#F0D4AC"),
-        "panel": "#FDF8EC",
-        "panel2": "#FAF0DC",
-        "line": "#4a3b2a",
-        "muted": "#77603f",
-        "text": "#2b1e10",
-        "portrait": "#000000",
-        "chrome": "#2b1e10",
-        "accent": "#7a1f1f",
-        "shadow": "#b09060",
-    },
+# Satu palet untuk dua tema. GitHub memilih berkas lewat
+# prefers-color-scheme, tapi isi posternya sama persis, jadi tidak ada
+# jarring antara mode terang dan gelap.
+_PALETTE = {
+    "bg": "#E8BF93",
+    # Lembar kertas tua: terang di tengah, makin amber ke tepi. Empat
+    # stop ini yang dipakai gradien paperWash, jadi bukan warna rata.
+    "wash": ("#FFFEFA", "#FCF5E7", "#F9EBD4", "#F0D4AC"),
+    # Kotak VISUAL MAP dan kotak DESCRIPTIVE INFORMATION (yang memuat
+    # animasi typing) memakai panel yang sama, jadi keduanya terbaca
+    # sebagai satu keluarga di poster.
+    "panel": "#FDF8EC",
+    # Pinggiran kedua kotak: amber tua yang lebih gelap dari bg kertas,
+    # satu nada dengan kertasnya tapi cukup pekat untuk memisahkan kotak
+    # dari bidang di sekitarnya.
+    "edge": "#8A5A2B",
+    "line": "#4a3b2a",
+    "muted": "#77603f",
+    "text": "#2b1e10",
+    "portrait": "#000000",
+    "chrome": "#2b1e10",
+    "accent": "#7a1f1f",
+    "shadow": "#b09060",
 }
 
-# Tema "dark" memakai kertas yang sama persis dengan "light": satu lembar
-# krem, bukan dua suasana berbeda. GitHub tetap memilih berkas lewat
-# prefers-color-scheme, tapi hasilnya identik supaya poster terbaca sama di
-# mode terang maupun gelap.
-THEMES["dark"].update(THEMES["light"])
+THEMES = {"dark": dict(_PALETTE), "light": dict(_PALETTE)}
 
 # BIO panel sekarang plain-text satu tinta (gaya ketikan koran),
 # bukan syntax-color code. Kuncinya satu warna tinta untuk semua peran.
@@ -185,6 +189,24 @@ def make_logos() -> dict[str, Image.Image]:
     d.ellipse((128, 128, 272, 272), fill=(0, 0, 0, 0))
     d.ellipse((174, 174, 226, 226), fill="black")
     logos["rust"] = rust
+
+    # Sheriff badge from the reference photo: a five-pointed star inside
+    # the banded ring, with a round seal at the hub. Drawn as a filled
+    # silhouette so it can be sampled into dots like the other marks.
+    sheriff = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(sheriff)
+    cx, cy = 200.0, 200.0
+    d.ellipse(
+        (cx - 186, cy - 186, cx + 186, cy + 186), outline="black", width=26
+    )
+    star_pts: list[tuple[float, float]] = []
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        r = 150 if i % 2 == 0 else 62
+        star_pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    d.polygon(star_pts, fill="black")
+    d.ellipse((cx - 46, cy - 46, cx + 46, cy + 46), fill="black")
+    logos["sheriff"] = sheriff
 
     # </> mark built from broad, rounded strokes.
     code = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -676,20 +698,22 @@ def render_svg(
     # the repeat boundary seamless. All logo-to-logo morphs use optimal transport.
     center = np.array([59.0 + 370.0 / 2.0, 139.0 + MASTHEAD_SHIFT + 380.0 / 2.0])
 
-    def bloom(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    def bloom(a: np.ndarray, b: np.ndarray, amount: float) -> np.ndarray:
         """Titik tengah perpindahan, didorong keluar dari pusat frame."""
         mid = (a + b) / 2.0
         d = mid - center
         norm = np.hypot(d[:, 0], d[:, 1])
         norm[norm < 1e-6] = 1.0
-        return mid + d / norm[:, None] * MORPH_BLOOM
+        return mid + d / norm[:, None] * amount
 
     frames: list[np.ndarray] = [source, source]
     prev = source
-    for pts in ordered:
-        frames.extend([bloom(prev, pts), pts, pts])
+    for slot, pts in enumerate(ordered):
+        # Tiap logo punya radius bloom sendiri, jadi lintasan partikel ke
+        # bentuk berikutnya berbeda-beda — transisinya tidak terasa seragam.
+        frames.extend([bloom(prev, pts, LOGO_BLOOM[slot]), pts, pts])
         prev = pts
-    frames.append(bloom(prev, source))
+    frames.append(bloom(prev, source, MORPH_BLOOM))
     frames.append(source)
     opacity_values = ";".join(["0", "0"] + ["1"] * (len(frames) - 3) + ["0"])
     bio_css, bio_markup = bio_panel(
@@ -702,8 +726,8 @@ def render_svg(
         'aria-labelledby="title desc">',
         "<title id=\"title\">Wildan Daffi Altair Darmawan's wanted poster profile</title>",
         '<desc id="desc">Vintage wanted-poster profile with animated dithered '
-        "portrait mugshot (MYSELF), TB, RPL, Altair, code, and Stellar "
-        "silhouettes, and a plain-text typing biodata."
+        "portrait mugshot (MYSELF), TB, RPL, Altair, code, Stellar, and "
+        "sheriff badge silhouettes, and a plain-text typing biodata."
         "</desc>",
         "<defs>",
         '<filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">'
@@ -857,8 +881,12 @@ def render_svg(
         # Garis pemisah tipis di bawah papan nama (ala poster referensi).
         f'<path d="M35 220H1145" stroke="{t["line"]}" stroke-width="1.5"/>',
         # Left visual frame (mugshot). Geometri digeser +140, animasi ikut.
-        f'<rect x="35" y="{num(88 + MASTHEAD_SHIFT)}" width="418" height="472" rx="6" fill="{t["panel2"]}" '
-        f'stroke="{t["line"]}" stroke-width="2"/>',
+        # Warnanya sama dengan panel DESCRIPTIVE INFORMATION di kanan —
+        # keduanya kotak krem — dan pinggirannya memakai "edge" yang
+        # lebih gelap dari bg kertas, jadi kedua kotak terbaca sebagai
+        # satu pasangan.
+        f'<rect x="35" y="{num(88 + MASTHEAD_SHIFT)}" width="418" height="472" rx="6" fill="{t["panel"]}" '
+        f'stroke="{t["edge"]}" stroke-width="2"/>',
         f'<path d="M35 {num(124 + MASTHEAD_SHIFT)}H453" stroke="{t["line"]}" stroke-width="1.5"/>',
         f'<text x="49" y="{num(111 + MASTHEAD_SHIFT)}" fill="{t["chrome"]}" '
         f'font-family="{MASTHEAD_SERIF}" font-size="17" '
@@ -942,6 +970,13 @@ def render_svg(
     # partikel terbang ke bentuk berikutnya. Opacity 0.5 di titik tengah
     # tiap morph membuat bentuk lama & baru saling silang dengan rata
     # (total tetap penuh), jadi transisinya lembut.
+    #
+    # Tiap logo juga punya dua gerak arrival sendiri: layer-nya mendarat
+    # sedikit lebih kecil lalu mengunci ke ukuran penuh (skala), dan tinta
+    # di titik-titiknya mekar sesaat sebelum kembali normal (lebar garis).
+    # Dua-duanya dibungkus <g> yang diskalakan terhadap pusat logo, bukan
+    # titik asal, jadi bentuknya melayang masuk ke tempatnya.
+    soft_splines = ";".join(["0.42 0 0.58 1"] * (len(times) - 1))
     for slot, name in enumerate(LOGO_ORDER):
         fade = ["0"] * len(times)
         fade[2 + 3 * slot] = "0.5"
@@ -949,12 +984,30 @@ def render_svg(
         fade[4 + 3 * slot] = "1"
         fade[5 + 3 * slot] = "0.5"
         fade[6 + 3 * slot] = "0"
+        scale = ["1"] * len(times)
+        scale[2 + 3 * slot] = f"{LOGO_ARRIVE[slot]:.2f}"
+        ink = ["1.5"] * len(times)
+        ink[2 + 3 * slot] = "1"
+        ink[3 + 3 * slot] = f"{LOGO_SETTLE[slot]:.2f}"
+        ink[4 + 3 * slot] = "1.5"
         parts.append(
-            f'<path d="{point_path(logo_dense[name])}" fill="none" '
+            f'<g transform="translate({num(LOGO_CX)},{num(LOGO_CY)})"><g>'
+            f'<animateTransform attributeName="transform" type="scale" '
+            f'begin="{INTRO_SECONDS}s" dur="{num(loop_seconds)}s" '
+            f'repeatCount="indefinite" calcMode="spline" '
+            f'keyTimes="{key_times}" keySplines="{soft_splines}" '
+            f'values="{";".join(scale)}"/>'
+            f'<path transform="translate({num(-LOGO_CX)},{num(-LOGO_CY)})" '
+            f'd="{point_path(logo_dense[name])}" fill="none" '
             f'stroke="{t["portrait"]}" stroke-width="1.5" opacity="0">'
             f'<animate attributeName="opacity" begin="{INTRO_SECONDS}s" '
             f'dur="{num(loop_seconds)}s" repeatCount="indefinite" '
-            f'keyTimes="{key_times}" values="{";".join(fade)}"/></path>'
+            f'keyTimes="{key_times}" values="{";".join(fade)}"/>'
+            f'<animate attributeName="stroke-width" begin="{INTRO_SECONDS}s" '
+            f'dur="{num(loop_seconds)}s" repeatCount="indefinite" '
+            f'calcMode="spline" keyTimes="{key_times}" '
+            f'keySplines="{soft_splines}" values="{";".join(ink)}"/>'
+            f'</path></g></g>'
         )
 
     # Optimal-transport travellers, represented as tiny path squares (never glyphs).
@@ -981,8 +1034,10 @@ def render_svg(
             f'<text x="438" y="{num(551 + MASTHEAD_SHIFT)}" text-anchor="end" fill="{t["muted"]}" '
             f'font-family="{MONO_UI}" font-size="11">NO. 081541015</text>',
             # Right information panel -> kotak DESCRIPTIVE INFORMATION.
+            # Warnanya sama dengan kotak VISUAL MAP dan pinggirannya
+            # memakai "edge" yang sama, jadi dua kotak itu berpasangan.
             f'<rect x="474" y="{num(88 + MASTHEAD_SHIFT)}" width="672" height="472" rx="6" fill="{t["panel"]}" '
-            f'stroke="{t["line"]}" stroke-width="2"/>',
+            f'stroke="{t["edge"]}" stroke-width="2"/>',
             f'<rect x="480" y="{num(94 + MASTHEAD_SHIFT)}" width="660" height="460" rx="4" fill="none" '
             f'stroke="{t["line"]}" stroke-width="1" opacity=".45"/>',
             f'<path d="M474 {num(124 + MASTHEAD_SHIFT)}H1146" stroke="{t["line"]}" stroke-width="1.5"/>',
