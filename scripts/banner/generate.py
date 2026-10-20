@@ -89,32 +89,32 @@ MONO_UI = "ui-monospace,SFMono-Regular,Consolas,monospace"
 
 THEMES = {
     "dark": {
-        "bg": "#B8874C",
+        "bg": "#DFB184",
         # Lembar kertas tua: terang di tengah, makin amber ke tepi. Empat
         # stop ini yang dipakai gradien paperWash, jadi bukan warna rata.
-        "wash": ("#FCE1B0", "#F3D19C", "#E4BA7E", "#CB9D64"),
-        "panel": "#E9C089",
-        "panel2": "#DCAE74",
-        "line": "#4a3520",
+        "wash": ("#FFFCF3", "#FBF0DC", "#F7E4C6", "#EDCB9C"),
+        "panel": "#FBF2DF",
+        "panel2": "#F6E9D1",
+        "line": "#3f3225",
         "muted": "#6b5233",
         "text": "#2b1e10",
         "portrait": "#000000",
         "chrome": "#2b1e10",
         "accent": "#7a1f1f",
-        "shadow": "#6b4a26",
+        "shadow": "#a08050",
     },
     "light": {
-        "bg": "#C99A60",
-        "wash": ("#FDE7BC", "#F6D8A6", "#E9C288", "#D2A46B"),
-        "panel": "#F0CB95",
-        "panel2": "#E5BC82",
-        "line": "#5b4527",
+        "bg": "#E8BF93",
+        "wash": ("#FFFEFA", "#FCF5E7", "#F9EBD4", "#F0D4AC"),
+        "panel": "#FDF8EC",
+        "panel2": "#FAF0DC",
+        "line": "#4a3b2a",
         "muted": "#77603f",
         "text": "#2b1e10",
         "portrait": "#000000",
         "chrome": "#2b1e10",
         "accent": "#7a1f1f",
-        "shadow": "#8a6a42",
+        "shadow": "#b09060",
     },
 }
 
@@ -773,31 +773,14 @@ def render_svg(
         '</radialGradient>',
         f'<clipPath id="paperClip"><rect x="13" y="13" width="1154" '
         f'height="{H - 26}" rx="13"/></clipPath>',
-        # Lipatan: kertas dilipat dua kali sebelum dimasukkan amplop, jadi ada
-        # satu lipatan vertikal di tengah dan satu horizontal di bawah tengah.
-        '<linearGradient id="creaseV" x1="0" y1="0" x2="1" y2="0">'
-        '<stop offset="0" stop-color="#000" stop-opacity="0"/>'
-        '<stop offset=".30" stop-color="#000" stop-opacity=".05"/>'
-        '<stop offset=".44" stop-color="#000" stop-opacity=".09"/>'
-        '<stop offset=".50" stop-color="#fff" stop-opacity=".13"/>'
-        '<stop offset=".56" stop-color="#000" stop-opacity=".09"/>'
-        '<stop offset=".70" stop-color="#000" stop-opacity=".05"/>'
-        '<stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>',
-        '<linearGradient id="creaseH" x1="0" y1="0" x2="0" y2="1">'
-        '<stop offset="0" stop-color="#000" stop-opacity="0"/>'
-        '<stop offset=".30" stop-color="#000" stop-opacity=".05"/>'
-        '<stop offset=".44" stop-color="#000" stop-opacity=".08"/>'
-        '<stop offset=".50" stop-color="#fff" stop-opacity=".11"/>'
-        '<stop offset=".56" stop-color="#000" stop-opacity=".08"/>'
-        '<stop offset=".70" stop-color="#000" stop-opacity=".05"/>'
-        '<stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>',
-        # Tepi menggelap: kertas lama selalu lebih gelap di pinggir, dan di
-        # referensi selisihnya besar (tengah #F0CD97 vs tepi #C08D52).
-        '<radialGradient id="age" cx=".5" cy=".46" r=".78">'
-        '<stop offset=".58" stop-color="#5a3a14" stop-opacity="0"/>'
-        '<stop offset=".78" stop-color="#5a3a14" stop-opacity=".07"/>'
-        '<stop offset=".90" stop-color="#4a2c0c" stop-opacity=".15"/>'
-        '<stop offset="1" stop-color="#3a2208" stop-opacity=".26"/>'
+        # Tepi menggelap ke arah amber: di referensi tengahnya krem terang
+        # (#FAEFDB) dan pinggirnya oranye-tan (#E3B788), jadi vignette-nya
+        # hangat, bukan coklat tua.
+        '<radialGradient id="age" cx=".5" cy=".46" r=".8">'
+        '<stop offset=".60" stop-color="#C97A1C" stop-opacity="0"/>'
+        '<stop offset=".78" stop-color="#CB7C1E" stop-opacity=".07"/>'
+        '<stop offset=".91" stop-color="#CD7E20" stop-opacity=".18"/>'
+        '<stop offset="1" stop-color="#CF8022" stop-opacity=".34"/>'
         '</radialGradient>',
         f'<clipPath id="visualClip"><rect x="49" y="{num(124 + MASTHEAD_SHIFT)}" width="390" height="414" rx="3"/></clipPath>',
         "</defs>",
@@ -876,15 +859,9 @@ def render_svg(
         'font-weight="900" letter-spacing="1.2">MYSELF</text>',
         f'<text x="438" y="{num(111 + MASTHEAD_SHIFT)}" text-anchor="end" fill="{t["muted"]}" '
         f'font-family="{MONO_UI}" font-size="12">MUGSHOT \u00b7 370\u00d7380 / 1-BIT</text>',
-        # Garis tinggi mugshot di belakang titik-titik.
-        f'<g stroke="{t["line"]}" opacity=".22">'
-        + "".join(
-            f'<path d="M49 {num(y)}H439" stroke-width="1"/>'
-            f'<text x="56" y="{num(y - 5)}" fill="{t["muted"]}" '
-            f'font-family="{MONO_UI}" font-size="9" opacity=".9">{5 - i}</text>'
-            for i, y in enumerate(range(int(300 + MASTHEAD_SHIFT), int(640 + MASTHEAD_SHIFT), 42))
-        )
-        + "</g>",
+        # Garis tinggi mugshot di belakang titik-titik: dulu digambar tipis
+        # (opacity .22), tapi garis bening itu memotong potret dan terbaca
+        # sebagai noise. Bingkai kiri sekarang bersih.
         f'<path d="M49 {num(141 + MASTHEAD_SHIFT)}h12M49 {num(141 + MASTHEAD_SHIFT)}v12'
         f'M439 {num(141 + MASTHEAD_SHIFT)}h-12M439 {num(141 + MASTHEAD_SHIFT)}v12'
         f'M49 {num(539 + MASTHEAD_SHIFT)}h12M49 {num(539 + MASTHEAD_SHIFT)}v-12'
@@ -1035,18 +1012,12 @@ def render_svg(
             # ada di seluruh permukaan, bukan cuma di atas dasar kertas.
             '<g clip-path="url(#paperClip)">'
             '<rect x="13" y="13" width="1154" height="'
-            f'{H - 26}" filter="url(#grain)" opacity=".15"/>'
+            f'{H - 26}" filter="url(#grain)" opacity=".10"/>'
             '<rect x="13" y="13" width="1154" height="'
-            f'{H - 26}" filter="url(#fiber)" opacity=".12"/>'
+            f'{H - 26}" filter="url(#fiber)" opacity=".05"/>'
             '<rect x="13" y="13" width="1154" height="'
-            f'{H - 26}" filter="url(#stain)" opacity=".44"/>'
-            '<rect x="13" y="13" width="1154" height="'
-            f'{H - 26}" filter="url(#mottle)" opacity=".22"/>'
-            '<rect x="13" y="13" width="1154" height="'
-            f'{H - 26}" filter="url(#pulp)" opacity=".05"/>'
+            f'{H - 26}" filter="url(#stain)" opacity=".07"/>'
             f'<rect x="13" y="13" width="1154" height="{H - 26}" fill="url(#age)"/>'
-            f'<rect x="566" y="13" width="48" height="{H - 26}" fill="url(#creaseV)"/>'
-            f'<rect x="13" y="{H * 0.62:.0f}" width="1154" height="44" fill="url(#creaseH)"/>'
             '</g>',
             "</svg>",
         ]
