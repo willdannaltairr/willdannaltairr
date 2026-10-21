@@ -37,34 +37,38 @@ from pathlib import Path
 
 # Parchment and ink, lifted straight from the banner (scripts/banner/
 # generate.py) so the webs sit on the same paper as the WANTED poster.
-THEMES = {
-    "dark": {
-        "bg": "#e5d7b8",
-        "paper": "#ede1c4",
-        "line": "#4a3a26",
-        "grid": "#4a3a26",
-        "spoke": "#6b5a40",
-        "label": "#2b2117",
-        "value": "#6b5a40",
-        "title": "#2b2117",
-        "fill": "#6b5a40",
-        "stroke": "#2b2117",
-        "ink": "#2b2117",
-    },
-    "light": {
-        "bg": "#f4eacc",
-        "paper": "#faf1dc",
-        "line": "#5b4a32",
-        "grid": "#5b4a32",
-        "spoke": "#77644a",
-        "label": "#2b2117",
-        "value": "#77644a",
-        "title": "#2b2117",
-        "fill": "#77644a",
-        "stroke": "#2b2117",
-        "ink": "#2b2117",
-    },
+# One palette for both themes, exactly like the banner: the sheet is the
+# same sheet whichever colour scheme the reader's GitHub is in.
+PALETTE = {
+    "bg": "#E8BF93",
+    # Gradien cahaya yang jatuh di tengah lembar, disalin dari banner.
+    "wash": ("#FFFEFA", "#FCF5E7", "#F9EBD4", "#F0D4AC"),
+    "paper": "#FDF8EC",
+    "edge": "#8A5A2B",
+    "line": "#4a3b2a",
+    # Benang jaring memakai tinta yang sama dengan garis bingkai; jaring
+    # radial lebih ringan supaya benangnyataknik terlihat di atasnya.
+    "grid": "#4a3b2a",
+    "spoke": "#77603f",
+    "muted": "#77603f",
+    "label": "#2b1e10",
+    "value": "#77603f",
+    "title": "#2b1e10",
+    "fill": "#77603f",
+    "stroke": "#2b1e10",
+    "ink": "#2b1e10",
+    "shadow": "#b09060",
 }
+
+THEMES = {"dark": dict(PALETTE), "light": dict(PALETTE)}
+
+# Semua card signals memakai kanvas yang sama persis, jadi dua chart di
+# README duduk sejajar dan jaring di dalamnya sama besar. RING_R adalah
+# radius cincin untuk semua chart; label yang lebih panjang hanya membuat
+# isinya diperkecil sedikit, bukan mengubah ukuran cardnya.
+CARD_W = 660
+CARD_H = 560
+RING_R = 200
 
 UA = {"User-Agent": "radar.py"}
 
@@ -252,38 +256,90 @@ def render(title, axes, theme: str, size: int, rings: int, show_values: bool,
 
     pad = 18
     title_h = TTL + 18 if title else 0
-    W = round((maxx - minx) + 2 * pad)
-    H = round((maxy - miny) + 2 * pad + title_h)
-    ox, oy = -minx + pad, -miny + pad + title_h
+    # Kanvas tetap untuk semua card: keempatnya berukuran sama persis,
+    # jadi dua chart di README duduk sejajar dan ukurannya bisa
+    # dibandingkan langsung. Isi yang melebihi card diperkecil, bukan
+    # dipotong.
+    W, H = CARD_W, CARD_H
+    avail_w = W - 2 * pad
+    avail_h = H - title_h - 2 * pad
+    content_w = maxx - minx
+    content_h = maxy - miny
+    s = min(1.0, avail_w / content_w, avail_h / content_h)
+    # Konten diskalakan terhadap pusat jaring, lalu dipusatkan di ruang
+    # yang tersisa di bawah judul.
+    ox = pad + (avail_w - s * content_w) / 2 - minx * s
+    oy = title_h + pad + (avail_h - s * content_h) / 2 - miny * s
 
-    # A long title ("<user> · language mix") can be wider than the chart itself.
-    # Widen the canvas and re-centre the chart inside it rather than clipping.
-    # Upper-cased because the plate is set like the banner masthead.
+    # A long title ("<user> · language mix") can be wider than the chart
+    # itself. Since the canvas is fixed, shrink the title instead of
+    # widening the card. Upper-cased because the plate is set like the
+    # banner masthead.
+    title_size = TTL
     if title:
-        need = round(text_width(title.upper(), TTL) * 1.1 + 2 * pad)
+        need = text_width(title.upper(), title_size) * 1.1 + 2 * pad
         if need > W:
-            ox += (need - W) / 2
-            W = need
+            title_size = max(9.0, TTL * (W - 2 * pad) / (need - 2 * pad))
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
         f'width="{W}" height="{H}" role="img" '
         f'aria-label="{esc(title) or "radar chart"}" font-family="{FONT}">',
+        # Filter dan gradien kertas, disalin apa adanya dari banner
+        # (scripts/banner/generate.py) supaya kartu signals duduk di
+        # lembar yang sama: butiran halus, serat panjang, bercak besar,
+        # dan vignette tepi.
+        '<defs>',
+        '<filter id="grain" x="0" y="0" width="100%" height="100%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3" '
+        'seed="4" result="n"/>'
+        '<feColorMatrix in="n" type="saturate" values="0"/>'
+        '<feComponentTransfer><feFuncA type="linear" slope=".55"/></feComponentTransfer>'
+        '</filter>',
+        '<filter id="fiber" x="0" y="0" width="100%" height="100%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".004 .62" numOctaves="4" '
+        'seed="23" result="n"/>'
+        '<feColorMatrix in="n" type="saturate" values="0"/>'
+        '<feComponentTransfer><feFuncA type="linear" slope=".5"/></feComponentTransfer>'
+        '</filter>',
+        '<filter id="stain" x="-5%" y="-5%" width="110%" height="110%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".0045 .006" '
+        'numOctaves="4" seed="91" result="n"/>'
+        '<feColorMatrix in="n" type="matrix" '
+        'values="0 0 0 0 .38  0 0 0 0 .25  0 0 0 0 .11  0 0 0 1.7 -.62"/>'
+        '</filter>',
+        # Cahaya jatuh di tengah lembar, sama seperti banner.
+        '<radialGradient id="paperWash" cx=".5" cy=".42" r=".8">'
+        f'<stop offset="0" stop-color="{c["wash"][0]}"/>'
+        f'<stop offset=".52" stop-color="{c["wash"][1]}"/>'
+        f'<stop offset=".84" stop-color="{c["wash"][2]}"/>'
+        f'<stop offset="1" stop-color="{c["wash"][3]}"/>'
+        '</radialGradient>',
+        # Vignette tepi amber, hangat seperti banner.
+        '<radialGradient id="age" cx=".5" cy=".46" r=".8">'
+        '<stop offset=".60" stop-color="#C97A1C" stop-opacity="0"/>'
+        '<stop offset=".78" stop-color="#CB7C1E" stop-opacity=".07"/>'
+        '<stop offset=".91" stop-color="#CD7E20" stop-opacity=".18"/>'
+        '<stop offset="1" stop-color="#CF8022" stop-opacity=".34"/>'
+        '</radialGradient>',
+        f'<clipPath id="paperClip"><rect x="6.5" y="6.5" width="{W - 13}" '
+        f'height="{H - 13}" rx="9"/></clipPath>',
+        '</defs>',
         # Parchment sheet, then the same double rule the poster uses.
         f'<rect width="{W}" height="{H}" rx="12" fill="{c["bg"]}"/>',
         f'<rect x="6.5" y="6.5" width="{W - 13}" height="{H - 13}" rx="9" '
-        f'fill="{c["paper"]}" stroke="{c["line"]}" stroke-width="1.4"/>',
+        f'fill="url(#paperWash)" stroke="{c["line"]}" stroke-width="1.4"/>',
         f'<rect x="12" y="12" width="{W - 24}" height="{H - 24}" rx="7" '
         f'fill="none" stroke="{c["line"]}" stroke-width="0.7" opacity=".5"/>',
     ]
     if title:
         parts.append(
-            f'<text x="{W / 2:.1f}" y="{pad + TTL - 3:.0f}" text-anchor="middle" '
-            f'font-family="{SERIF}" font-size="{TTL}" font-weight="700" '
+            f'<text x="{W / 2:.1f}" y="{pad + title_size - 3:.0f}" text-anchor="middle" '
+            f'font-family="{SERIF}" font-size="{title_size:.1f}" font-weight="700" '
             f'letter-spacing="1.8" fill="{c["title"]}">'
             f'{esc(title.upper())}</text>'
         )
-    parts.append(f'<g transform="translate({ox:.1f},{oy:.1f})">')
+    parts.append(f'<g transform="translate({ox:.1f},{oy:.1f}) scale({s:.4f})">')
 
     # Spokes first: the silk lines the rest of the web is spun onto.
     for x, y in outer:
@@ -339,7 +395,25 @@ def render(title, axes, theme: str, size: int, rings: int, show_values: bool,
                 f'font-size="{VAL}" fill="{c["value"]}">{v:g}</text>'
             )
 
-    parts.append("</g></svg>")
+    parts.append("</g>")
+
+    # Lapisan kertas terakhir: butiran halus, serat panjang, bercak besar,
+    # dan vignette tepi. Filter hanya berlaku pada elemen yang disisipkan,
+    # jadi lapisan ini harus paling akhir — kalau tidak, konten di
+    # atasnya akan menutupi tekstur dan kertasnya terlihat datar.
+    parts.append(
+        f'<g clip-path="url(#paperClip)">'
+        f'<rect x="6.5" y="6.5" width="{W - 13}" height="{H - 13}" '
+        f'filter="url(#grain)" opacity=".10"/>'
+        f'<rect x="6.5" y="6.5" width="{W - 13}" height="{H - 13}" '
+        f'filter="url(#fiber)" opacity=".05"/>'
+        f'<rect x="6.5" y="6.5" width="{W - 13}" height="{H - 13}" '
+        f'filter="url(#stain)" opacity=".07"/>'
+        f'<rect x="6.5" y="6.5" width="{W - 13}" height="{H - 13}" '
+        f'fill="url(#age)"/>'
+        f'</g>'
+    )
+    parts.append("</svg>")
     return "".join(parts)
 
 
