@@ -1,7 +1,7 @@
 {
   "_comment": "Cached contribution calendar, written by scripts/skyline.py. Used when no token is available.",
   "user": "willdannaltairr",
-  "total": 1364,
+  "total": 1366,
   "days": [
     {
       "date": "2025-11-23",
@@ -1473,6 +1473,10 @@
     },
     {
       "date": "2026-11-25",
+      "count": 2
+    },
+    {
+      "date": "2026-11-26",
       "count": 0
     }
   ]
